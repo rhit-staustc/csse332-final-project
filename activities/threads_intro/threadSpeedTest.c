@@ -18,11 +18,14 @@
    of parallelism.  You can adjust the work size above to change the
    amount of work done.
 
-   First play a bit with the code and get a feel for the speedup with different
-   approaches.
+   First, write code that would split the calculation betwen two processes.
 
-   Then, modify PART 3 so that it runs a number of threads equal to THREAD_COUNT
-   rather than just 2.
+   Then, write code that would split the calculation between two threads.
+
+   Run the binary and check the differences.
+
+   Check out the solution directory for scaling up to more and more threads and processes.
+
    */
 
 #define THREAD_COUNT 5
@@ -71,23 +74,12 @@ int main(int argc, char** argv) {
 
 	gettimeofday(&start, NULL);
 
+  // mmap allows us to share an area of memory between processes
+  // you don't have to worry about this for today.
 	dest = mmap(NULL, sizeof(float) * WORK_SIZE, PROT_READ | PROT_WRITE,
 		    MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
-	int fresult = fork();
-	if (fresult == 0) {
-		// child handles the odd values
-		for (i = 1; i < WORK_SIZE; i += 2) {
-			dest[i] = power(i, i);
-		}
-		exit(0);
-	} else {
-		// parent handles the even values
-		for (i = 0; i < WORK_SIZE; i += 2) {
-			dest[i] = power(i, i);
-		}
-		wait(NULL);  // wait for child to finish
-	}
+  // TODO: Add your code here...
 
 	gettimeofday(&end, NULL);
 	output_time_difference("fork", &start, &end);
@@ -96,17 +88,7 @@ int main(int argc, char** argv) {
 
 	gettimeofday(&start, NULL);
 
-	pthread_t tid[2];
-
-	int starting1 = 0;
-	int starting2 = 1;
-
-	pthread_create(&tid[0], NULL, threadFun, &starting1);
-
-	// lets let the parent do some work as well
-	threadFun(&starting2);
-
-	pthread_join(tid[0], NULL);
+  // TODO: Add your code here.....
 
 	gettimeofday(&end, NULL);
 
