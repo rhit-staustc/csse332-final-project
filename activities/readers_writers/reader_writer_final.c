@@ -34,7 +34,7 @@ void *reader(void *arg)
     pthread_mutex_lock(&lock);
     readers_active--;
     if(readers_active==0){
-        pthread_cond_signal(&time_to_write);
+      pthread_cond_signal(&time_to_write);
     }
     pthread_mutex_unlock(&lock);
     // Please keep this here to inject some delay in the readers' arrival to
@@ -80,12 +80,18 @@ int main()
 {
   int i,b;
   pthread_t rtid[NUM_READERS],wtid[NUM_WRITERS];
+  int rids[NUM_WRITERS];
+  int wids[NUM_READERS];
   //create writer
-  for(i=0;i<NUM_WRITERS;i++)
-    pthread_create(&wtid[i],NULL,writer,(void *)&i);
+  for(i=0;i<NUM_WRITERS;i++){
+    rids[i] = i;
+    pthread_create(&wtid[i],NULL,writer,(void *)&rids);
+  }
   //create readers
-  for(i=0;i<NUM_READERS;i++)
-    pthread_create(&rtid[i],NULL,reader,(void *)&i);
+  for(i=0;i<NUM_READERS;i++) {
+    wids[i] = i;
+    pthread_create(&rtid[i],NULL,reader,(void *)&wids);
+  }
 
   // this will never joing since our threads run forever.
   // Hit C-c to exit the program.
