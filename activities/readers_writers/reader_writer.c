@@ -17,7 +17,6 @@ void *reader(void *arg)
 
     //critical section
     printf("Data read by the reader %d is %d\n",f,data);
-    sleep(1);
     //critical section
 
     // Please keep this here to inject some delay in the readers' arrival to
@@ -49,12 +48,18 @@ int main()
 {
   int i,b;
   pthread_t rtid[5],wtid[5];
+  int rids[i];
+  int wids[i];
   //create writer
-  for(i=0;i<NUM_WRITERS;i++)
-    pthread_create(&wtid[i],NULL,writer,(void *)&i);
+  for(i=0;i<NUM_WRITERS;i++) {
+    rids[i] = i;
+    pthread_create(&wtid[i],NULL,writer,(void *)&rids[i]);
+  }
   //create readers
-  for(i=0;i<NUM_READERS;i++)
-    pthread_create(&rtid[i],NULL,reader,(void *)&i);
+  for(i=0;i<NUM_READERS;i++) {
+    wids[i] = i;
+    pthread_create(&rtid[i],NULL,reader,(void *)&wids[i]);
+  }
 
   // this will never joing since our threads run forever.
   // Hit C-c to exit the program.
