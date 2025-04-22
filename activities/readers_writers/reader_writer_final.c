@@ -55,12 +55,14 @@ void *writer(void *arg)
     }
     writers_waiting--;
     writer_active=1;
+    pthread_mutex_unlock(&lock);
     //critical section
     printf("Writer %d starts to write..\n",f);
     data++;
     sleep(1);
     printf("Writer %d finishes to write %d\n",f,data);
     //critical section
+    pthread_mutex_lock(&lock);
     writer_active=0;
     if(writers_waiting){
       pthread_cond_signal(&time_to_write);
