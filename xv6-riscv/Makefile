@@ -134,6 +134,7 @@ UPROGS=\
 	$U/_wc\
 	$U/_debug\
 	$U/_zombie\
+	$U/_xv6test\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
