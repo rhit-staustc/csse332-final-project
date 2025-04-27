@@ -681,3 +681,9 @@ procdump(void)
     printf("\n");
   }
 }
+
+uint64 spoon(void *arg)
+{
+	printf("In spoon system call with argument %p\n", arg);
+	return 0;
+}
