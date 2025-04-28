@@ -23,6 +23,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int spoon(void*);
+int thread_create(void (*start_routine)(void*), void *arg);
+int thread_join(int id);
 
 // ulib.c
 int stat(const char*, struct stat*);
