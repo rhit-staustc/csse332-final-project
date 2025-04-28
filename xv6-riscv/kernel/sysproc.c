@@ -108,7 +108,7 @@ uint64 sys_thread_create(void)
 
 uint64 sys_thread_join(void)
 {
-	int id;
-	argint(0, &id);
+	uint64 id;
+	argaddr(0, &id);
 	return thread_join(id);
 }
