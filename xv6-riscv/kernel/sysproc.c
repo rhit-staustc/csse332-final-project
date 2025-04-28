@@ -96,3 +96,19 @@ uint64 sys_spoon(void)
 	argaddr(0, &addr);
 	return spoon((void*)addr);
 }
+
+uint64 sys_thread_create(void)
+{
+	uint64 addr;
+	uint64 start;
+	argaddr(0,&start);
+	argaddr(1,&addr);
+	return thread_create((void*)start, (void*)addr);
+}
+
+uint64 sys_thread_join(void)
+{
+	int id;
+	argint(0, &id);
+	return thread_join(id);
+}

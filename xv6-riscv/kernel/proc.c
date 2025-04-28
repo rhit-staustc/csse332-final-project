@@ -687,3 +687,17 @@ uint64 spoon(void *arg)
 	printf("In spoon system call with argument %p\n", arg);
 	return 0;
 }
+
+uint64 thread_create(void (*start_routine)(void*), void *arg)
+{
+	printf("In threadcreate syscall with args: %p, %p\n", start_routine, arg);
+	printf("Not yet implemented!\n");
+	return 0;
+}
+
+uint64 thread_join(int thread_id)
+{
+	printf("In threadjoin syscall with args: %p\n", thread_id);
+	printf("Not yet implemented!\n");
+	return 0;
+}
