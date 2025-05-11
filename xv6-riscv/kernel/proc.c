@@ -690,9 +690,60 @@ uint64 spoon(void *arg)
 
 uint64 thread_create(void (*start_routine)(void*), void *arg)
 {
-	printf("In threadcreate syscall with args: %p, %p\n", start_routine, arg);
-	printf("Not yet implemented!\n");
-	return 0;
+	struct proc *p = myproc();
+  struct proc *np; // new proc
+
+  // Allocate process.
+  // allocproc call:
+  // 1. returns with p->lock held
+  // 2. sets pid = allocpid();    maybe an issue
+  // 3. allocates trapframe page
+  // 4. allocates empty user page table
+  // 5. sets up new context to start executing at forkret
+  // (which returns to user space? not sure what that means)
+  if((np = allocproc()) == 0){
+    return -1;
+  }
+  
+  // uvmcopy(): given parent page table, copy its memory into child page table
+  // copies page table and physical memory
+  // result is two separate address spaces with initially identical contents
+  
+
+  // Copy user memory from parent to child.
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  np->sz = p->sz;
+  
+  // give new thread a one page stack
+  uint64 stack_addr = PGROUNDUP(np->sz);
+  if (uvmalloc(np->pagetable, stack_addr, stack_addr + PGSIZE, PTE_W) == 0) {
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  np->sz = stack_addr + PGSIZE; // increment memory size
+  np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
+
+  // set up registers
+  *(np->trapframe) = *(p->trapframe); // copy saved user registers
+  np->trapframe->epc = (uint64)start_routine; // where to start execution
+  np->trapframe->a0 = (uint64)arg; // a0: argument register
+
+  // modify struct proc
+  np->is_thread = 1;
+  np->tid = np->pid; 
+  safestrcpy(np->name, "kthread", sizeof("kthread"));
+
+
+  np->state = RUNNABLE;
+  release(&np->lock);
+
+  return np->pid;
+
 }
 
 uint64 thread_join(int thread_id)
