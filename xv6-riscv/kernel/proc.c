@@ -720,19 +720,22 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   
   // give new thread a one page stack
   uint64 stack_addr = PGROUNDUP(np->sz);
+  //if (uvmalloc(np->pagetable, stack_addr, stack_addr + PGSIZE, PTE_W) == 0) {
+
   if (uvmalloc(np->pagetable, stack_addr, stack_addr + PGSIZE, PTE_W) == 0) {
     freeproc(np);
     release(&np->lock);
     return -1;
   }
   np->sz = stack_addr + PGSIZE; // increment memory size
-  np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
+  //np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
 
   // set up registers
   *(np->trapframe) = *(p->trapframe); // copy saved user registers
   np->trapframe->epc = (uint64)start_routine; // where to start execution
   np->trapframe->a0 = (uint64)arg; // a0: argument register
-
+  np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
+ 
   // modify struct proc
   np->is_thread = 1;
   np->tid = np->pid; 

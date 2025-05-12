@@ -106,6 +106,6 @@ struct proc {
   char name[16];               // Process name (debugging)
                                
   // for threads
-  int is_thread;  
+  int is_thread;  // needed so that kernel knows what to tear down
   int tid;        // thread id
 };
