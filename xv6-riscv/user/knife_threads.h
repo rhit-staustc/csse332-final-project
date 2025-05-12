@@ -30,6 +30,6 @@ int knife_thread_join(knife_thread_t thread);
  * and should free its resources - clean up stack
  *
 */
-void knife_thread_exit(void *return_val, int signal_num);
-
+// void knife_thread_exit(void *return_val, int signal_num);
+void knife_thread_exit(void);
 
