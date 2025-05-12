@@ -13,26 +13,31 @@ This project is intended to add multithreading to the xv6 OS. We will be doing t
 Thread Creation
 ===============
 
-Which register from the thread's trapframe is used to determine where its stack starts?
-- Does the user or kernal create new stacks for each process?
+1. Which register from the thread's trapframe is used to determine where its stack starts?
+The stack pointer.
+2. Does the user or kernel create new stacks for each process?
+The kernel.
+3. Which register from threads trapframe will influence where the thread will start executing?
+Program counter
 
-Which register from threads trapframe will influence where the thread will start executing
-
-
-Track lineage relationships between threads of the same process?
-
+4. Track lineage relationships between threads of the same process?
+Thread ID
 
 Stack Separation
 ================
 
-How threads get assigned different stacks? (Even though they are still in separate address spaces?)
-
+1. How threads get assigned different stacks? (Even though they are still in separate address spaces?)
+Each thread is basically getting a seperate portion of the memory that is being treated as a stack.
+It is based on offsets of the original/previous address.
 
 Test Cases
 ==========
 
-- Describe test case used for creation of threads
-
+1. Describe test case used for creation of threads
+Test case 1 makes sure that threads can be created and contain an argument
+Test case 2 makes sure that the threads can do things repeatedly. Notably,
+if we remove the sleeps, the output is jumbled, proof of the two processes
+working at once and writing over eachother's outputs.
 
 Additional Comments
 ===================
