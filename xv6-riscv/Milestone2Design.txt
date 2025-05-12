@@ -7,4 +7,34 @@ Date: 5/12/2025
 High Level Description
 ======================
 
-This project is intended to add multithreading to the xv6 OS. 
+This project is intended to add multithreading to the xv6 OS. We will be doing this through adding "Knife_threads" which are threads that allocate their own space, and keep track of their stack and id. Added thread functionality includes easy thread exiting, through the ability to exit early and signal the parent that it has finished.
+
+
+Thread Creation
+===============
+
+Which register from the thread's trapframe is used to determine where its stack starts?
+- Does the user or kernal create new stacks for each process?
+
+Which register from threads trapframe will influence where the thread will start executing
+
+
+Track lineage relationships between threads of the same process?
+
+
+Stack Separation
+================
+
+How threads get assigned different stacks? (Even though they are still in separate address spaces?)
+
+
+Test Cases
+==========
+
+- Describe test case used for creation of threads
+
+
+Additional Comments
+===================
+
+
