@@ -728,7 +728,7 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
     release(&np->lock);
     return -1;
   }
-  np->sz = stack_addr + PGSIZE; // increment memory size
+  np->sz = stack_addr + PGSIZE -8; // increment memory size
   //np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
 
   // set up registers
