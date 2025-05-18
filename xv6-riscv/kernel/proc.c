@@ -760,7 +760,37 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
 
 uint64 thread_join(int thread_id)
 {
-	printf("In threadjoin syscall with args: %p\n", thread_id);
-	printf("Not yet implemented!\n");
-	return 0;
+	struct proc *pp;
+	int havekids;
+	int pid;
+	struct proc *p = myproc();
+
+	acquire(&wait_lock);
+
+	for(;;){
+		havekids=0;
+		for(pp=proc; pp<&proc[NPROC]; pp++){
+			if(pp->parent){
+				acquire(&pp->lock);
+				havekids=1;
+
+				if(pp->state==ZOMBIE){
+					pid=pp->pid;
+					freeproc(pp);
+					release(&pp->lock);
+					release(&wait_lock);
+					return pp->tid;
+				}
+				release(&pp->lock);
+			}
+		}
+		if(!havekids||killed(p)){
+			release(&wait_lock);
+			return -1;
+		}
+		sleep(p,&wait_lock);
+	}
+	//printf("In threadjoin syscall with args: %p\n", thread_id);
+	//printf("Not yet implemented!\n");
+	//return 0;
 }
