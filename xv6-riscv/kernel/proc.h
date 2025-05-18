@@ -108,4 +108,8 @@ struct proc {
   // for threads
   int is_thread;  // needed so that kernel knows what to tear down
   int tid;        // thread id
+	//for linked list of threads
+  struct proc *group_leader;  //original parent thread that calls thread create
+  struct proc *group_next;    //next sibling thread in the family
+  struct proc *group_prev; 
 };

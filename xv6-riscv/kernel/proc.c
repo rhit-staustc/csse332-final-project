@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include <stddef.h>
 
 struct cpu cpus[NCPU];
 
@@ -124,6 +125,10 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+
+  p->group_leader = NULL;
+  p->group_prev = NULL;
+  p->group_next = NULL;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -347,6 +352,30 @@ void
 exit(int status)
 {
   struct proc *p = myproc();
+
+
+  //unlink proc from group list if it was ever a family
+  if(p->group_leader) {
+	  struct proc *leader = p->group_leader;
+
+	  if(p->group_next != p) {
+		  p->group_prev->group_next = p->group_next;
+		  p->group_next->group_prev = p->group_prev;
+
+	          //if p was the leader pick a new one
+	          if(p == leader) {
+		  	struct proc *newLeader = p->group_next;
+		  	struct proc *q = newLeader;
+ 	  	  	do {
+		  		q->group_leader = newLeader;
+		  		q = q->group_next;
+		  	} while(q != newLeader);
+	  	  }
+	  }
+	  p->group_leader = NULL;
+	  p->group_prev = NULL;
+	  p->group_next = NULL;
+  }
 
   if(p == initproc)
     panic("init exiting");
@@ -688,9 +717,11 @@ uint64 spoon(void *arg)
 	return 0;
 }
 
+
+
 uint64 thread_create(void (*start_routine)(void*), void *arg)
 {
-	struct proc *p = myproc();
+  struct proc *p = myproc();
   struct proc *np; // new proc
 
   // Allocate process.
@@ -728,8 +759,8 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
     release(&np->lock);
     return -1;
   }
-  np->sz = stack_addr + PGSIZE -8; // increment memory size
-  //np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
+  np->sz = stack_addr + PGSIZE; //-8 // increment memory size
+  np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
 
   // set up registers
   *(np->trapframe) = *(p->trapframe); // copy saved user registers
@@ -750,6 +781,22 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   np->tid = np->pid; 
   safestrcpy(np->name, "kthread", sizeof("kthread"));
 
+  //FAMILY LINKED LIST INSERTION
+  struct proc *leader = (p->group_leader ? p->group_leader : p);
+
+  if(p->group_leader == NULL) { //if this is the first thread in its family
+	p->group_leader = p;
+	p->group_next = p;
+	p->group_prev = p;
+  } 
+
+  //insert new process into circular linked list 
+  np->group_leader = leader;
+  np->group_prev = leader;
+  np->group_next = leader->group_next;
+  leader->group_next->group_prev = np;
+  leader->group_next = np;
+  
 
   np->state = RUNNABLE;
   release(&np->lock);
