@@ -762,7 +762,7 @@ uint64 thread_join(int thread_id)
 {
 	struct proc *pp;
 	int havekids;
-	int pid;
+	//int pid;
 	struct proc *p = myproc();
 
 	acquire(&wait_lock);
@@ -775,7 +775,7 @@ uint64 thread_join(int thread_id)
 				havekids=1;
 
 				if(pp->state==ZOMBIE){
-					pid=pp->pid;
+	//				pid=pp->pid;
 					freeproc(pp);
 					release(&pp->lock);
 					release(&wait_lock);

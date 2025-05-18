@@ -23,7 +23,7 @@ void thread_test2(void *arg){
 int main(){
 	printf("Testing shared mem starting\n");
 	
-	int tid=thread_create(thread_test, (void*)val);
+	int tid=thread_create(thread_test, 0);
 
 	if(tid<0){
 		printf("thread creation faild\n");
