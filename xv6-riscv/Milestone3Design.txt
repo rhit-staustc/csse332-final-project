@@ -1,0 +1,42 @@
+---
+title: Project Milestone 3
+Author(s): Amruth Annavaram, Tanner Staus, Kallen Selby
+Date: 5/19/25
+---
+
+High level description
+======================
+
+Add a high level description of your project here. Make sure to summarize all
+the features that you have designed.
+
+Thread creation
+================
+
+Describe the decisions you have made for thread create, including answers to
+the questions above.
+
+Memory sharing
+===============
+
+Describe how you have implemented the sharing of the address space in this
+milestone, including answers to any questions in the description above.
+
+Test cases
+===========
+
+- Describe the test case you used for the creation of the threads.
+
+- Describe the test case you used for testing shared memory between threads.
+
+Additional comments
+==================
+
+Add any addition comments, questions, or design decisions that you are
+considering for the final submission.
+
+Grade
+======
+
+The grade you believe should be assigned to your group, with some argument as
+to why you chose that grade.
