@@ -332,6 +332,29 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return -1;
 }
 
+
+int uvmshare(pagetable_t src, pagetable_t dest, uint64 sz) {
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+
+  for (i = 0; i < sz; i += PGSIZE) {
+    pte = walk(src, i, 0);
+    if (pte == 0 || (*pte & PTE_V) == 0) {
+      continue; // hole, skip
+    }
+    pa = PTE2PA(*pte);
+    flags = PTE_FLAGS(*pte);
+
+    if(mappages(dest, i, PGSIZE, pa, flags) != 0) {
+      return -1;
+    }
+    kref_inc(pa);
+  }
+  return 0;
+}
+  
+
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
 void
@@ -437,19 +460,3 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
-
-int uvmshare(pagetable_t dest, pagetable_t src, uint64 sz) {
-  for (uint64 i = 0; i < sz; i += PGSIZE) {
-    pte_t *pte = walk(src, i, 0);
-    if (pte == 0 || (*pte & PTE_V) == 0) {
-      continue;
-    }
-    uint64 pa = PTE2PA(*pte);
-    if(mappages(dest, i, PGSIZE, pa, PTE_FLAGS(*pte)) != 0) {
-      return -1;
-    }
-    kref_inc(pa);
-  }
-  return 0;
-}
-  

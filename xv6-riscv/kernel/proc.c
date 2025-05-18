@@ -710,26 +710,21 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   // result is two separate address spaces with initially identical contents
   
 
-  // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  // share user pages instead of copying 
+  if(uvmshare(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
   }
   np->sz = p->sz;
-  
 
   // give new thread a one page stack
-  uint64 stack_addr = PGROUNDUP(np->sz);
-  //if (uvmalloc(np->pagetable, stack_addr, stack_addr + PGSIZE, PTE_W) == 0) {
-
-  if (uvmalloc(np->pagetable, stack_addr, stack_addr + PGSIZE, PTE_W) == 0) {
+  uint64 stack_addr = PGROUNDUP(np->sz) + PGSIZE * np->tid; // one stack per tid
+  if (mappages(np->pagetable, stack_addr, PGSIZE, (uint64)kalloc(), PTE_W|PTE_R|PTE_U) < 0) {
     freeproc(np);
     release(&np->lock);
     return -1;
   }
-  np->sz = stack_addr + PGSIZE -8; // increment memory size
-  //np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
 
   // set up registers
   *(np->trapframe) = *(p->trapframe); // copy saved user registers
@@ -754,7 +749,7 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   np->state = RUNNABLE;
   release(&np->lock);
 
-  return np->pid;
+  return np->tid;
 
 }
 
