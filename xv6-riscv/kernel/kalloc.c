@@ -9,6 +9,8 @@
 #include "riscv.h"
 #include "defs.h"
 
+static int refcount[PHYSTOP / PGSIZE];
+
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
@@ -79,4 +81,24 @@ kalloc(void)
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
+}
+
+int kref_inc(uint64 pa)
+{
+  int idx = pa >> PGSHIFT;
+  acquire(&kmem.lock);
+  refcount[idx]++;
+  int numrefs = refcount[idx];
+  release(&kmem.lock);
+  return numrefs;
+}
+
+int kref_dec(uint64 pa)
+{
+  int idx = pa >> PGSHIFT;
+  acquire(&kmem.lock);
+  refcount[idx]--;
+  int numrefs = refcount[idx];
+  release(&kmem.lock);
+  return numrefs;
 }
