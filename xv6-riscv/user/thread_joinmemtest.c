@@ -5,7 +5,7 @@
 int sharednum = 0;
 
 void thread_test(void *arg){
-	printf("Thread setting num to 50!\n");
+	printf("Thread 1 setting num to 50!\n");
 	sharednum=50;
 	while(1){
 		continue;
@@ -14,7 +14,7 @@ void thread_test(void *arg){
 
 void thread_test2(void *arg){
 	sleep(15);
-	printf("Shared num is %d!/n", sharednum);
+	printf("Thread 2 knows the shared num is %d!\n", sharednum);
 	while(1){
 		continue;
 	}
