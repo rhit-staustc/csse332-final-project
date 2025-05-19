@@ -220,6 +220,19 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmfree(pagetable, sz);
 }
 
+void free_user_page(pagetable_t pagetable, uint64 va) {
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0 || (*pte & PTE_V) == 0)
+    return; // unmapped, so there is nothing to do
+  
+  uint64 pa = PTE2PA(*pte);
+  if (kref_dec(pa) == 0) {
+    // if the reference count is zero, free the page
+    kfree((void*)pa);
+  }
+  *pte = 0; // unmap the page
+}
+
 // a user program that calls exec("/init")
 // assembled from ../user/initcode.S
 // od -t xC ../user/initcode
