@@ -172,6 +172,8 @@ uint64          uvmdealloc(pagetable_t, uint64, uint64);
 int             uvmcopy(pagetable_t, pagetable_t, uint64);
 int             uvmshare(pagetable_t, pagetable_t, uint64); // new function
 void            uvmfree(pagetable_t, uint64);
+void            uvmfree_shared(pagetable_t, uint64);
+void            free_user_page(pagetable_t, uint64);
 void            uvmunmap(pagetable_t, uint64, uint64, int);
 void            uvmclear(pagetable_t, uint64);
 pte_t *         walk(pagetable_t, uint64, int);
