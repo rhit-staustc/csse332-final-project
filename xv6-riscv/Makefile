@@ -138,6 +138,7 @@ UPROGS=\
 	$U/_thread_createtest\
 	$U/_thread_joinmemtest\
 	$U/_group_test\
+	$U/_combined_test\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

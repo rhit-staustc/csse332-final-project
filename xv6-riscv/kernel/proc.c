@@ -793,8 +793,7 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   *(np->trapframe) = *(p->trapframe); // copy saved user registers
   np->trapframe->epc = (uint64)start_routine; // where to start execution
   np->trapframe->a0 = (uint64)arg; // a0: argument register
-  np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down)
- 
+  np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down) 
   //THIS IS FROM FORC - Copys file discriptor table
   for(int i = 0; i < NOFILE; i++) {
 	  if(p->ofile[i]) {
@@ -805,7 +804,8 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
 
   // modify struct proc
   np->is_thread = 1;
-  np->tid = np->pid; 
+  np->tid = np->pid;
+  np->parent = p; //ARUTH TESTING 
   safestrcpy(np->name, "kthread", sizeof("kthread"));
 
   //FAMILY LINKED LIST INSERTION
@@ -844,7 +844,9 @@ uint64 thread_join(int thread_id)
 	for(;;){
 		havekids=0;
 		for(pp=proc; pp<&proc[NPROC]; pp++){
-			if(pp->parent){
+			if(pp->parent!=p||pp->tid!=thread_id){
+				continue;
+		}
 				acquire(&pp->lock);
 				havekids=1;
 
@@ -856,7 +858,7 @@ uint64 thread_join(int thread_id)
 					return pp->tid;
 				}
 				release(&pp->lock);
-			}
+			
 		}
 		if(!havekids||killed(p)){
 			release(&wait_lock);
