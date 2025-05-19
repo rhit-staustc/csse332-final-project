@@ -25,6 +25,7 @@ int uptime(void);
 int spoon(void*);
 int thread_create(void (*start_routine)(void*), void *arg);
 int thread_join(int id);
+int getfamily(int *buf, int max);
 
 // ulib.c
 int stat(const char*, struct stat*);

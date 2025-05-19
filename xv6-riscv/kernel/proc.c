@@ -718,6 +718,36 @@ uint64 spoon(void *arg)
 	return 0;
 }
 
+uint64 sys_getFamily(void) {
+	int *buf, max;
+	struct proc *cur = myproc();
+
+	argaddr(0, (uint64*)&buf);
+	argint(1, &max);
+
+	struct proc *leader = cur->group_leader ? cur->group_leader : cur;
+
+	int count = 0;
+	struct proc *p = leader;
+	do {
+		if(count >= max)
+			break;
+		
+		if(copyout(cur->pagetable,
+			(uint64)buf + count * sizeof(int),
+			(char*)&p->tid,
+			sizeof(int)) < 0) {
+
+			return -1;
+		}
+
+		count++;
+		p = p->group_next;
+	} while(p != leader);
+
+	return count;
+}
+		
 
 
 uint64 thread_create(void (*start_routine)(void*), void *arg)
