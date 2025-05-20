@@ -39,7 +39,6 @@ int main(){
 	sleep(50);
 
 	printf("done\n");
-	while(1){
-		continue;
-	}
+	
+	exit(0);
 }

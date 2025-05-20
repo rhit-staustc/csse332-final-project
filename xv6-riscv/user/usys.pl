@@ -39,3 +39,4 @@ entry("uptime");
 entry(spoon);
 entry(thread_join);
 entry(thread_create);
+entry(getfamily);

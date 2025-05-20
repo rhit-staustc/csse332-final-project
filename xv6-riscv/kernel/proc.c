@@ -160,20 +160,33 @@ found:
 static void
 freeproc(struct proc *p)
 {
-  if(p->trapframe)
-    kfree((void*)p->trapframe);
-  p->trapframe = 0;
-  if(p->pagetable)
-    proc_freepagetable(p->pagetable, p->sz);
-  p->pagetable = 0;
-  p->sz = 0;
-  p->pid = 0;
-  p->parent = 0;
-  p->name[0] = 0;
-  p->chan = 0;
-  p->killed = 0;
-  p->xstate = 0;
-  p->state = UNUSED;
+  //if its a user-level thread, only free its trapframe, leave pagetable alone
+  if(p->is_thread) {
+	  if(p->trapframe) {
+		  kfree((void*)p->trapframe);
+		  p->trapframe = 0;
+	  }
+	  p->state = UNUSED;
+	  return;
+  }
+
+  //if full process, full tear-down
+  if(p->trapframe) {
+	  kfree((void*)p->trapframe);
+  	  p->trapframe = 0;
+  }
+  if(p->pagetable) {
+	  proc_freepagetable(p->pagetable, p->sz);
+  	  p->pagetable = 0;
+  	  p->sz = 0;
+  	  p->pid = 0;
+  	  p->parent = 0;
+  	  p->name[0] = 0;
+  	  p->chan = 0;
+  	  p->killed = 0;
+  	  p->xstate = 0;
+  	  p->state = UNUSED;
+  }
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -718,7 +731,7 @@ uint64 spoon(void *arg)
 	return 0;
 }
 
-uint64 sys_getFamily(void) {
+uint64 sys_getfamily(void) {
 	int *buf, max;
 	struct proc *cur = myproc();
 
@@ -804,11 +817,12 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
 
   // modify struct proc
   np->is_thread = 1;
-  np->tid = np->pid;
-  np->parent = p; //ARUTH TESTING 
+  np->tid = np->pid; 
   safestrcpy(np->name, "kthread", sizeof("kthread"));
+  np->parent = p;
 
   //FAMILY LINKED LIST INSERTION
+  acquire(&p->lock);
   struct proc *leader = (p->group_leader ? p->group_leader : p);
 
   if(p->group_leader == NULL) { //if this is the first thread in its family
@@ -817,6 +831,7 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
 	p->group_prev = p;
   } 
 
+
   //insert new process into circular linked list 
   np->group_leader = leader;
   np->group_prev = leader;
@@ -824,6 +839,21 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   leader->group_next->group_prev = np;
   leader->group_next = np;
   
+  //DEBUG
+  /*
+  {
+  	struct proc *q = leader;
+	printf("Family insert: leader = %d chain:", leader->tid);
+	do {
+		printf(" %d", q->tid);
+		q = q->group_next;
+	} while(q != leader);
+	printf("\n");
+  }
+  */
+
+  release(&p->lock);  
+
 
   np->state = RUNNABLE;
   release(&np->lock);
