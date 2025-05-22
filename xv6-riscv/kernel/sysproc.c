@@ -112,3 +112,9 @@ uint64 sys_thread_join(void)
 	argaddr(0, &id);
 	return thread_join(id);
 }
+
+uint64 sys_thread_exit(void)
+{
+    thread_exit();
+    return 0;  // This line should never be reached
+}

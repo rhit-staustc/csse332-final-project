@@ -24,5 +24,8 @@ int knife_thread_join(knife_thread_t tid) {
 }
 
 void knife_thread_exit(void) {
-  exit(0);
+  thread_exit();
+  // If thread_exit returns, something went wrong
+  printf("thread_exit returned! This should never happen.\n");
+  exit(-1);
 }

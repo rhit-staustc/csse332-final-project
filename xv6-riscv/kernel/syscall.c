@@ -104,6 +104,7 @@ extern uint64 sys_close(void);
 extern uint64 sys_spoon(void);
 extern uint64 sys_thread_create(void);
 extern uint64 sys_thread_join(void);
+extern uint64 sys_thread_exit(void);
 extern uint64 sys_getfamily(void);
 
 // An array mapping syscall numbers from syscall.h
@@ -132,6 +133,7 @@ static uint64 (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_spoon]   sys_spoon,
 [SYS_thread_create] sys_thread_create,
+[SYS_thread_exit] sys_thread_exit,
 [SYS_thread_join] sys_thread_join,
 [SYS_getfamily] sys_getfamily,
 };

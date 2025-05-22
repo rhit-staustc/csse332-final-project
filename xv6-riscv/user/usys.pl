@@ -36,7 +36,8 @@ entry("getpid");
 entry("sbrk");
 entry("sleep");
 entry("uptime");
-entry(spoon);
-entry(thread_join);
-entry(thread_create);
-entry(getfamily);
+entry("spoon");
+entry("thread_create");  # This is 23
+entry("thread_join");    # This is 24
+entry("thread_exit");    # This is 25
+entry("getfamily");

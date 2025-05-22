@@ -1,62 +1,38 @@
-
-// user/group_test.c
-//
-// Two independent thread families with clean, serialized output.
-//
-// Family A (parent): 5 threads
-// Family B (child):  3 threads
-//
-// Each thread copies its own getfamily() result into a record.
-// The parent/child print the records after joining, so lines never
-// interleave and every thread reports the full family list.
-
 #include "kernel/types.h"
+#include "kernel/stat.h"
 #include "user/user.h"
-
-#define NA     5          // threads in family A
-#define NB     3          // threads in family B
-#define MAXF   16         // buffer for getfamily()
-
-// global ready-flags
-volatile int readyA = 0;
-volatile int readyB = 0;
-
-// per-thread result
-struct rec {
-  int tid;
-  int n;
-  int fam[MAXF];
-};
-
-// context we pass to each thread (record + ready-flag)
-struct ctx {
-  struct rec *r;
-  volatile int *flag;
-};
+#include "knife_threads.h"
 
 // ───────────────── thread entry ─────────────────
-void
-thread_fn(void *arg)
+// In thread_fn:
+void thread_fn(void *arg)
 {
-  sleep(10);
-  printf("Thread %d: Hello, world!\n", *(int*)arg);
-
-  exit(0);
+    printf("Thread %d: Hello, world!\n", *(int*)arg);
+    free(arg);  // Don't forget to free the allocated memory
+    knife_thread_exit();
 }
 
-int
-main(void)
+// In main:
+int main(void)
 {
-  printf("Group test: Creating one thread\n");
+    printf("Group test: Creating one thread\n");
 
-  int tid = thread_create(thread_fn, 0);
-  printf("Created thread %d\n", tid);
+    int *arg = malloc(sizeof(int));
+    *arg = 58;
 
-  sleep(10);
+    knife_thread_t tid;
+    if (knife_thread_create(&tid, thread_fn, arg) < 0) {
+        printf("Failed to create thread\n");
+        exit(-1);
+    }
+    printf("Created thread %d\n", tid);
 
-  exit(0);
+    // Wait specifically for our thread to finish
+    if (knife_thread_join(tid) < 0) {
+        printf("Failed to join thread\n");
+        exit(-1);
+    }
 
-
-  
+    printf("Thread %d joined successfully\n", tid);
+    exit(0);
 }
-

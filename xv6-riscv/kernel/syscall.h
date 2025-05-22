@@ -26,7 +26,8 @@
 #define SYS_spoon        22
 #define SYS_thread_create 23
 #define SYS_thread_join   24
-#define SYS_getfamily     25
+#define SYS_thread_exit   25
+#define SYS_getfamily     26
 
 // This macro drives user/usys.S generation:
 #define SYSCALLS        \
@@ -54,6 +55,7 @@
   X(spoon)             \
   X(thread_create)     \
   X(thread_join)       \
+  X(thread_exit)       \
   X(getfamily)
 
 #endif // XV6_SYSCALL_H

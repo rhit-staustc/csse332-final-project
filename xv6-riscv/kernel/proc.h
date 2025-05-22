@@ -114,4 +114,5 @@ struct proc {
   struct proc *group_prev; 
 
   int num_children; //number of children threads created by this thread
+  int ref_count; //number of active threads in the family
 };

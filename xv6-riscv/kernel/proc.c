@@ -15,6 +15,7 @@ struct proc *initproc;
 
 int nextpid = 1;
 struct spinlock pid_lock;
+struct spinlock proc_table_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
@@ -49,9 +50,9 @@ void
 procinit(void)
 {
   struct proc *p;
-  
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
+  initlock(&proc_table_lock, "proc_table");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
       p->state = UNUSED;
@@ -81,7 +82,14 @@ mycpu(void)
 
 // Return the current struct proc *, or zero if none.
 struct proc*
-myproc(void)
+myproc(void) 
+{
+  struct cpu *c = mycpu();
+  return c->proc;
+}
+
+struct proc*
+myproc_safe(void) 
 {
   push_off();
   struct cpu *c = mycpu();
@@ -108,7 +116,7 @@ allocpid()
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
 static struct proc*
-allocproc(void)
+allocproc(int alloc_pagetable)
 {
   struct proc *p;
 
@@ -130,6 +138,7 @@ found:
   p->group_prev = NULL;
   p->group_next = NULL;
   p->num_children = 0;
+  p->ref_count = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -138,12 +147,18 @@ found:
     return 0;
   }
 
+  memset(&p->context, 0, sizeof(p->context));
+  p->context.ra = (uint64)forkret;
+  p->context.sp = p->kstack + PGSIZE;
+
   // An empty user page table.
-  p->pagetable = proc_pagetable(p);
-  if(p->pagetable == 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
+  if(alloc_pagetable) {
+    p->pagetable = proc_pagetable(p);
+    if(p->pagetable == 0){
+      freeproc(p);
+      release(&p->lock);
+      return 0;
+    }
   }
 
   // Set up new context to start executing at forkret,
@@ -163,6 +178,7 @@ freeproc(struct proc *p)
 {
   //if its a user-level thread, only free its trapframe, leave pagetable alone
   if(p->is_thread) {
+    printf("Freeproc: Freeing thread\n");
 	  if(p->trapframe) {
 		  kfree((void*)p->trapframe);
 		  p->trapframe = 0;
@@ -238,6 +254,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 // a user program that calls exec("/init")
 // assembled from ../user/initcode.S
 // od -t xC ../user/initcode
+// od -t xC ../user/initcode
 uchar initcode[] = {
   0x17, 0x05, 0x00, 0x00, 0x13, 0x05, 0x45, 0x02,
   0x97, 0x05, 0x00, 0x00, 0x93, 0x85, 0x35, 0x02,
@@ -254,7 +271,7 @@ userinit(void)
 {
   struct proc *p;
 
-  p = allocproc();
+  p = allocproc(1);
   initproc = p;
   
   // allocate one user page and copy initcode's instructions
@@ -304,7 +321,7 @@ fork(void)
   struct proc *p = myproc();
 
   // Allocate process.
-  if((np = allocproc()) == 0){
+  if((np = allocproc(1)) == 0){
     return -1;
   }
 
@@ -360,73 +377,166 @@ reparent(struct proc *p)
   }
 }
 
+// Thread exit function that cleans up thread resources
+void 
+thread_exit(void)
+{
+    struct proc *p = myproc();
+    
+    if(p == 0) {
+        panic("thread_exit: no process");
+    }
+    
+    // Set state to ZOMBIE and notify parent
+    acquire(&p->lock);
+    
+    // Check if this is actually a thread
+    if (!p->is_thread) {
+        printf("thread_exit called by non-thread process\n");
+        release(&p->lock);
+        exit(-1);
+        return;
+    }
+    
+    p->xstate = 0;  // Exit status 0 for normal thread exit
+    p->state = ZOMBIE;
+    
+    // Update group leader's ref count
+    if (p->group_leader) {
+        acquire(&p->group_leader->lock);
+        p->group_leader->ref_count--;
+        release(&p->group_leader->lock);
+    }
+    
+    // Wake up any thread that might be waiting to join this one
+    wakeup(p->parent);
+    
+    // Jump into the scheduler, never to return
+    sched();
+    panic("zombie thread exit");
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
-void
-exit(int status)
+void exit(int status)
 {
-  struct proc *p = myproc();
+    struct proc *p = myproc();
+    struct proc *leader = p->group_leader ? p->group_leader : p;
+    int is_last_thread = 0;
 
-
-  //unlink proc from group list if it was ever a family
-  if(p->group_leader) {
-	  struct proc *leader = p->group_leader;
-
-	  if(p->group_next != p) {
-		  p->group_prev->group_next = p->group_next;
-		  p->group_next->group_prev = p->group_prev;
-
-	          //if p was the leader pick a new one
-	          if(p == leader) {
-		  	struct proc *newLeader = p->group_next;
-		  	struct proc *q = newLeader;
- 	  	  	do {
-		  		q->group_leader = newLeader;
-		  		q = q->group_next;
-		  	} while(q != newLeader);
-	  	  }
-	  }
-	  p->group_leader = NULL;
-	  p->group_prev = NULL;
-	  p->group_next = NULL;
-  }
-
-  if(p == initproc)
-    panic("init exiting");
-
-  // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
-      struct file *f = p->ofile[fd];
-      fileclose(f);
-      p->ofile[fd] = 0;
+    acquire(&p->lock);
+    
+    // If this is a thread in a multi-threaded process
+    if (p->group_next != p) {
+        // Get the leader's lock to modify group state
+        if (p != leader) {
+            acquire(&leader->lock);
+        }
+        
+        // Safety check: ensure the linked list is in a valid state
+        if (p->group_next && p->group_prev) {
+            // Remove this thread from the group's circular list
+            p->group_prev->group_next = p->group_next;
+            p->group_next->group_prev = p->group_prev;
+            
+            // Decrement the reference count
+            if (leader->ref_count > 0) {
+                leader->ref_count--;
+            }
+            
+            // Check if this is the last thread
+            if (leader->ref_count == 0) {
+                is_last_thread = 1;
+                if (p != leader) {
+                    release(&leader->lock);
+                    leader = p;
+                    acquire(&leader->lock);
+                }
+            } else if (p == leader) {
+                // Promote new leader
+                if (p->group_next) {
+                    struct proc *new_leader = p->group_next;
+                    acquire(&new_leader->lock);
+                    
+                    // Update all threads to point to the new leader
+                    struct proc *t = new_leader;
+                    do {
+                        if (t != new_leader) {
+                            acquire(&t->lock);
+                        }
+                        t->group_leader = new_leader;
+                        if (t != new_leader) {
+                            release(&t->lock);
+                        }
+                        t = t->group_next;
+                    } while (t != new_leader);
+                    
+                    release(&new_leader->lock);
+                    release(&leader->lock);
+                    leader = NULL;
+                }
+            } else {
+                release(&leader->lock);
+            }
+        }
+    } else {
+        // Single-threaded process
+        is_last_thread = 1;
     }
-  }
 
-  begin_op();
-  iput(p->cwd);
-  end_op();
-  p->cwd = 0;
+    // Clean up process resources if last thread
+    if (is_last_thread) {
+        // Close open files
+        for (int fd = 0; fd < NOFILE; fd++) {
+            if (p->ofile[fd]) {
+                fileclose(p->ofile[fd]);
+                p->ofile[fd] = 0;
+            }
+        }
+        
+        // Free current working directory
+        begin_op();
+        if (p->cwd) {
+            iput(p->cwd);
+        }
+        end_op();
+        p->cwd = 0;
 
-  acquire(&wait_lock);
+        // Free page table and user memory
+        if (p->pagetable) {
+            proc_freepagetable(p->pagetable, p->sz);
+            p->pagetable = 0;
+            p->sz = 0;
+        }
+        
+        // Reparent children to init
+        acquire(&wait_lock);
+        reparent(p);
+        release(&wait_lock);
+    }
 
-  // Give any children to init.
-  reparent(p);
+    // Free the trapframe
+    if (p->trapframe) {
+        kfree((void*)p->trapframe);
+        p->trapframe = 0;
+    }
 
-  // Parent might be sleeping in wait().
-  wakeup(p->parent);
-  
-  acquire(&p->lock);
+    // Set state to ZOMBIE and notify parent
+    p->xstate = status;
+    p->state = ZOMBIE;
 
-  p->xstate = status;
-  p->state = ZOMBIE;
+    // Wake up parent if we're being waited on
+    acquire(&wait_lock);
+    if (p->parent) {
+        wakeup(p->parent);
+    }
+    release(&wait_lock);
 
-  release(&wait_lock);
-
-  // Jump into the scheduler, never to return.
-  sched();
-  panic("zombie exit");
+    // Release our lock and schedule
+    //release(&p->lock);
+    sched();
+    panic("zombie exit");
 }
 
 // Wait for a child process to exit and return its pid.
@@ -528,8 +638,10 @@ sched(void)
   int intena;
   struct proc *p = myproc();
 
-  if(!holding(&p->lock))
+  if(!holding(&p->lock)) {
+    printf("Lock: %p\n", &p->lock);
     panic("sched p->lock");
+  }
   if(mycpu()->noff != 1)
     panic("sched locks");
   if(p->state == RUNNING)
@@ -559,18 +671,40 @@ void
 forkret(void)
 {
   static int first = 1;
-
+  struct proc *p = myproc();
+  
   // Still holding p->lock from scheduler.
-  release(&myproc()->lock);
+  release(&p->lock);  // CRITICAL: Must release the lock acquired by scheduler
 
+  // Clear first to avoid a race with the first process
+  // being created.
   if (first) {
-    // File system initialization must be run in the context of a
-    // regular process (e.g., because it calls sleep), and thus cannot
-    // be run from main().
     first = 0;
     fsinit(ROOTDEV);
   }
 
+  // Check if this is a thread
+  if (p->is_thread) {
+    // For threads, don't run initcode - go directly to usertrapret
+    usertrapret();
+  }
+
+  usertrapret();
+}
+
+// Thread's first return to user space
+void
+threadret(void)
+{
+  struct proc *p = myproc();
+  
+  // Still holding p->lock from scheduler.
+  release(&p->lock);
+  
+  // Make sure we're properly set up
+  p->trapframe->epc = (uint64)p->trapframe->epc;
+  p->trapframe->sp = PGROUNDDOWN(p->trapframe->sp);
+  
   usertrapret();
 }
 
@@ -639,6 +773,17 @@ kill(int pid)
         // Wake process from sleep().
         p->state = RUNNABLE;
       }
+
+
+      //maybe?
+      // if(p->state == RUNNABLE) {
+      //   // Switch to chosen process
+      //   p->state = RUNNING;
+      //   c->proc = p;
+      //   swtch(&c->context, &p->context);
+      //   c->proc = 0;
+    //}
+
       release(&p->lock);
       return 0;
     }
@@ -761,159 +906,200 @@ uint64 sys_getfamily(void) {
 
 	return count;
 }
-		
 
 
 uint64 thread_create(void (*start_routine)(void*), void *arg)
 {
-  struct proc *p = myproc();
-  struct proc *np; // new proc
+    struct proc *p = myproc_safe();
+    struct proc *np;
+    uint64 curr_group_sz, new_group_sz;
+    void *stack_page_physical;
+    struct proc *leader;
+    int i;
 
-  // Allocate process.
-  // allocproc call:
-  // 1. returns with p->lock held
-  // 2. sets pid = allocpid();    maybe an issue
-  // 3. allocates trapframe page
-  // 4. allocates empty user page table
-  // 5. sets up new context to start executing at forkret
-  // (which returns to user space? not sure what that means)
-  // this calls uvmcreate to allocate new page table
-  if((np = allocproc()) == 0){
-    return -1;
-  }
-  
-  // uvmcopy(): given parent page table, copy its memory into child page table
-  // copies page table and physical memory
-  // result is two separate address spaces with initially identical contents
-  
-
-  // shares mapped pages from parent page table into child page table
-  // by finding the physical address of each page in the parent page table
-  if(uvmshare(p->pagetable, np->pagetable, p->sz) < 0){
-    freeproc(np);
-    release(&np->lock);
-    return -1;
-  }
-  np->sz = p->sz;
-
-  // give new thread a one page stack
-  np->tid = p->num_children++;
-  uint64 stack_addr = PGROUNDUP(np->sz) + PGSIZE * np->tid; // one stack per tid
-  if (mappages(np->pagetable, stack_addr, PGSIZE, (uint64)kalloc(), PTE_W|PTE_R|PTE_U) < 0) {
-    freeproc(np);
-    release(&np->lock);
-    return -1;
-  }
-
-  // FAMILY LINKED LIST STUFF
-  // This will add the thread to its family, update family sz, and map new stack onto page table
-  // of every thread in family
-  acquire(&p->lock);
-  struct proc *leader = (p->group_leader ? p->group_leader : p); 
-
-  if(p->group_leader == NULL) { //if this is the first thread in its family
-	p->group_leader = p;
-	p->group_next = p;
-	p->group_prev = p;
-  } 
-
-  //insert new process into circular linked list 
-  np->group_leader = leader;
-  np->tid = leader->num_children++;
-
-  np->group_prev = leader;
-  np->group_next = leader->group_next;
-  leader->group_next->group_prev = np;
-  leader->group_next = np;
-  
-  //Now that in linked list, increment sz of all threads in the family
-  struct proc *q = leader;
-  uint64 new_sz = p->sz + PGSIZE; 
-  do {
-    if(q == p) {
-      q->sz = new_sz;
-      mappages(q->pagetable, stack_addr, PGSIZE, (uint64)kalloc(), PTE_W|PTE_R|PTE_U);
-    } else if(q == np) {
-      q->sz = new_sz;
-    } else {
-      //already holding lock for p or np
-        acquire(&q->lock);
-        q->sz = new_sz;
-        mappages(q->pagetable, stack_addr, PGSIZE, (uint64)kalloc(), PTE_W|PTE_R|PTE_U);
-        release(&q->lock);
+    // Allocate process with allocproc(0) to skip page table allocation
+    if((np = allocproc(0)) == 0) {
+        return -1;
     }
-    q = q->group_next;
-  } while(q != leader);
 
-  //Then update pagetable of all threads in family with new stack mapping
+    // Get the group leader while holding p's lock
+    acquire(&p->lock);
+    leader = p->group_leader ? p->group_leader : p;
+    
+    // Release p's lock before acquiring leader's lock to avoid deadlock
+    if (leader != p) {
+        release(&p->lock);
+        acquire(&leader->lock);
+        // Now re-acquire p's lock if needed
+        if (p != leader) {
+            acquire(&p->lock);
+        }
+    }
 
+    // Initialize thread's group information
+    if (p->group_leader == NULL) {
+        // First thread in the group
+        p->group_leader = p;
+        p->group_next = p;
+        p->group_prev = p;
+        p->num_children = 0;
+        p->ref_count = 1;
+    }
 
-  release(&p->lock);  
+    // Update group information
+    leader->num_children++;
+    leader->ref_count++;
+    np->tid = leader->num_children;
+    np->group_leader = leader;
+    
+    // Insert into circular list
+    np->group_prev = leader;
+    np->group_next = leader->group_next;
+    leader->group_next->group_prev = np;
+    leader->group_next = np;
 
+    // Share the page table
+    np->pagetable = p->pagetable;
+    curr_group_sz = p->sz;
+    new_group_sz = curr_group_sz + PGSIZE;
 
-  // set up registers
-  *(np->trapframe) = *(p->trapframe); // copy saved user registers
-  np->trapframe->epc = (uint64)start_routine; // where to start execution
-  np->trapframe->a0 = (uint64)arg; // a0: argument register
-  np->trapframe->sp = stack_addr + PGSIZE - 8; // set pointer to top of stack (grows down) 
-  //THIS IS FROM FORC - Copys file discriptor table
-  for(int i = 0; i < NOFILE; i++) {
-	  if(p->ofile[i]) {
-		  np->ofile[i] = filedup(p->ofile[i]); //increments ref-count
-	  }
-  }
-  np->cwd = idup(p->cwd);
+    // Update size for all threads in group
+    struct proc *q = leader;
+    do {
+        q->sz = new_group_sz;
+        q = q->group_next;
+    } while (q != leader);
 
-  // modify struct proc
-  np->is_thread = 1;
-  safestrcpy(np->name, "kthread", sizeof("kthread"));
-  np->parent = p;
+    // Allocate stack page
+    if((stack_page_physical = kalloc()) == 0) {
+        goto bad;
+    }
+    memset(stack_page_physical, 0, PGSIZE);
 
-  
+    // Map the stack page
+    if(mappages(np->pagetable, curr_group_sz, PGSIZE, 
+      (uint64)stack_page_physical, PTE_W|PTE_R|PTE_U) < 0) {
+        kfree(stack_page_physical);
+        goto bad;
+    }
 
+    // First copy the parent's trapframe
+    *np->trapframe = *p->trapframe;
+    
+    // Then set the kernel transition values
+    np->trapframe->kernel_satp = r_satp();
+    np->trapframe->kernel_sp = np->kstack + PGSIZE;
+    np->trapframe->kernel_trap = (uint64)usertrapret;
+    np->trapframe->kernel_hartid = r_tp();
+    
+    // Set thread-specific values
+    np->trapframe->epc = (uint64)start_routine;  // Thread entry point
+    
+    // Stack setup - critical for correct execution
+    uint64 stack_top = curr_group_sz + PGSIZE;
+    // Reserve space at top of stack and ensure 16-byte alignment
+    np->trapframe->sp = (stack_top - 16) & ~0xF;
+    
+    // Argument passing
+    np->trapframe->a0 = (uint64)arg;
+    
+    // For proper thread exit handling
+    np->trapframe->ra = 0;  // Will cause trap if function returns without explicit exit
+    
+    // Set up the kernel context to return to user space
+    np->context.ra = (uint64)forkret;
+    np->context.sp = np->kstack + PGSIZE;                    // kernel stack pointer
 
-  np->state = RUNNABLE;
-  release(&np->lock);
+    // Copy file descriptors
+    for(i = 0; i < NOFILE; i++) {
+        if(p->ofile[i]) {
+            np->ofile[i] = filedup(p->ofile[i]);
+        }
+    }
+    np->cwd = idup(p->cwd);
 
-  return np->tid;
+    // Set thread properties
+    np->is_thread = 1;
+    safestrcpy(np->name, "kthread", sizeof("kthread"));
+    np->parent = p;
+    np->state = RUNNABLE;
 
+    // Release locks
+    release(&p->lock);
+    if (leader != p) {
+        release(&leader->lock);
+    }
+    release(&np->lock);
+
+    return np->tid;
+
+bad:
+    // Cleanup on error
+    printf("Thread creation failed\n");
+    np->group_prev->group_next = np->group_next;
+    np->group_next->group_prev = np->group_prev;
+    leader->num_children--;
+    leader->ref_count--;
+
+    release(&p->lock);
+    if (leader != p && leader) {
+        release(&leader->lock);
+    }
+    release(&np->lock);
+    return -1;
 }
 
 uint64 thread_join(int thread_id)
 {
-	struct proc *pp;
-	int havekids;
-	//int pid;
-	struct proc *p = myproc();
-
-	acquire(&wait_lock);
-
-	for(;;){
-		havekids=0;
-		for(pp=proc; pp<&proc[NPROC]; pp++){
-			if(pp->parent!=p||pp->tid!=thread_id){
-				continue;
-		}
-				acquire(&pp->lock);
-				havekids=1;
-
-				if(pp->state==ZOMBIE){
-	//				pid=pp->pid;
-					freeproc(pp);
-					release(&pp->lock);
-					release(&wait_lock);
-					return pp->tid;
-				}
-				release(&pp->lock);
-			
-		}
-		if(!havekids||killed(p)){
-			release(&wait_lock);
-			return -1;
-		}
-		sleep(p,&wait_lock);
-	}
-	//printf("In threadjoin syscall with args: %p\n", thread_id);
-	//printf("Not yet implemented!\n");
-	//return 0;
+    struct proc *p = myproc_safe();
+    struct proc *tp;
+    int havekids;
+    
+    acquire(&wait_lock);  // For wait()
+    
+    for(;;) {
+        // Scan through table looking for exited children
+        havekids = 0;
+        for(tp = proc; tp < &proc[NPROC]; tp++) {
+            if(tp->parent == p && tp->tid == thread_id && tp->is_thread) {
+                acquire(&tp->lock);
+                havekids = 1;
+                if(tp->state == ZOMBIE) {
+                    // Found one
+                    int tid = tp->tid;  // Store tid before freeing
+                    
+                    // Free the thread's stack
+                    uint64 stack_addr = PGROUNDDOWN(tp->trapframe->sp);
+                    if(stack_addr != 0) {
+                        // Find the PTE for the stack
+                        pte_t *pte = walk(p->pagetable, stack_addr, 0);
+                        if(pte && (*pte & PTE_V)) {
+                            // Get the physical address and free it
+                            uint64 pa = PTE2PA(*pte);
+                            if(pa) {
+                                // Mark the page as invalid
+                                *pte = 0;
+                                // Free the physical memory
+                                kfree((void*)pa);
+                            }
+                        }
+                    }
+                    
+                    freeproc(tp);
+                    release(&tp->lock);
+                    release(&wait_lock);
+                    return tid;
+                }
+                release(&tp->lock);
+            }
+        }
+        
+        if(!havekids || p->killed) {
+            release(&wait_lock);
+            return -1;
+        }
+        
+        // Wait for a child to exit
+        sleep(p, &wait_lock);
+    }
 }

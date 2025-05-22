@@ -88,7 +88,7 @@ $U/initcode: $U/initcode.S
 tags: $(OBJS) _init
 	etags *.S *.c
 
-ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
+ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o $U/knife_threads.o
 
 _%: %.o $(ULIB)
 	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $^
@@ -137,8 +137,8 @@ UPROGS=\
 	$U/_xv6test\
 	$U/_thread_createtest\
 	$U/_thread_joinmemtest\
-	$U/_group_test\
 	$U/_combined_test\
+	$U/_group_test\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
@@ -196,5 +196,3 @@ grade:
 	@$(MAKE) clean || \
           (echo "'make clean' failed.  HINT: Do you have another running instance of xv6?" && exit 1)
 	./grade-lab-$(LAB).py $(GRADEFLAGS)
-
-

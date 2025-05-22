@@ -138,6 +138,8 @@ kerneltrap()
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
+  uint64 stval = r_stval();
+  struct proc *p = myproc();
   
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
@@ -145,8 +147,9 @@ kerneltrap()
     panic("kerneltrap: interrupts enabled");
 
   if((which_dev = devintr()) == 0){
-    printf("scause %p\n", scause);
-    printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
+    // Only print on actual errors, not timer interrupts
+    printf("scause %p pid=%d\n", scause, p ? p->pid : -1);
+    printf("sepc=%p stval=%p\n", sepc, stval);
     panic("kerneltrap");
   }
 
@@ -218,4 +221,3 @@ devintr()
     return 0;
   }
 }
-
