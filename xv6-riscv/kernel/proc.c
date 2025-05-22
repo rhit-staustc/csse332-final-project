@@ -387,7 +387,6 @@ thread_exit(void)
         panic("thread_exit: no process");
     }
     
-    // Set state to ZOMBIE and notify parent
     acquire(&p->lock);
     
     // Check if this is actually a thread
@@ -398,19 +397,64 @@ thread_exit(void)
         return;
     }
     
+    // Get the thread group leader
+    struct proc *leader = p->group_leader ? p->group_leader : p;
+    
+    // Update thread group linked list
+    if (p->group_next != p) {
+        // Get the leader's lock if this is not the leader
+        if (p != leader) {
+            acquire(&leader->lock);
+        }
+        
+        // Remove this thread from the circular list
+        p->group_prev->group_next = p->group_next;
+        p->group_next->group_prev = p->group_prev;
+        
+        // Update reference count
+        if (leader->ref_count > 0) {
+            leader->ref_count--;
+        }
+        
+        // If this is the leader but not the last thread, promote a new leader
+        if (p == leader && leader->ref_count > 0 && p->group_next) {
+            struct proc *new_leader = p->group_next;
+            acquire(&new_leader->lock);
+            
+            // Update all threads to point to the new leader
+            struct proc *t = new_leader;
+            do {
+                if (t != new_leader) {
+                    acquire(&t->lock);
+                }
+                t->group_leader = new_leader;
+                if (t != new_leader) {
+                    release(&t->lock);
+                }
+                t = t->group_next;
+            } while (t != new_leader);
+            
+            release(&new_leader->lock);
+        }
+        
+        // Release leader's lock if acquired
+        if (p != leader) {
+            release(&leader->lock);
+        }
+    }
+    
+    // Mark as zombie and set exit status
     p->xstate = 0;  // Exit status 0 for normal thread exit
     p->state = ZOMBIE;
     
-    // Update group leader's ref count
-    if (p->group_leader) {
-        acquire(&p->group_leader->lock);
-        p->group_leader->ref_count--;
-        release(&p->group_leader->lock);
-    }
-    
     // Wake up any thread that might be waiting to join this one
-    wakeup(p->parent);
+    acquire(&wait_lock);
+    if (p->parent) {
+        wakeup(p->parent);
+    }
+    release(&wait_lock);
     
+      
     // Jump into the scheduler, never to return
     sched();
     panic("zombie thread exit");
@@ -419,122 +463,61 @@ thread_exit(void)
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
-void exit(int status)
+void 
+exit(int status)
 {
     struct proc *p = myproc();
-    struct proc *leader = p->group_leader ? p->group_leader : p;
-    int is_last_thread = 0;
-
+    
+    if (p->is_thread) {
+        // For threads, use thread_exit
+        thread_exit();
+        return; // Never reached
+    }
+    
     acquire(&p->lock);
     
-    // If this is a thread in a multi-threaded process
-    if (p->group_next != p) {
-        // Get the leader's lock to modify group state
-        if (p != leader) {
-            acquire(&leader->lock);
+    // This is a process, clean up all resources
+    
+    // Free open files
+    for (int fd = 0; fd < NOFILE; fd++) {
+        if (p->ofile[fd]) {
+            fileclose(p->ofile[fd]);
+            p->ofile[fd] = 0;
         }
-        
-        // Safety check: ensure the linked list is in a valid state
-        if (p->group_next && p->group_prev) {
-            // Remove this thread from the group's circular list
-            p->group_prev->group_next = p->group_next;
-            p->group_next->group_prev = p->group_prev;
-            
-            // Decrement the reference count
-            if (leader->ref_count > 0) {
-                leader->ref_count--;
-            }
-            
-            // Check if this is the last thread
-            if (leader->ref_count == 0) {
-                is_last_thread = 1;
-                if (p != leader) {
-                    release(&leader->lock);
-                    leader = p;
-                    acquire(&leader->lock);
-                }
-            } else if (p == leader) {
-                // Promote new leader
-                if (p->group_next) {
-                    struct proc *new_leader = p->group_next;
-                    acquire(&new_leader->lock);
-                    
-                    // Update all threads to point to the new leader
-                    struct proc *t = new_leader;
-                    do {
-                        if (t != new_leader) {
-                            acquire(&t->lock);
-                        }
-                        t->group_leader = new_leader;
-                        if (t != new_leader) {
-                            release(&t->lock);
-                        }
-                        t = t->group_next;
-                    } while (t != new_leader);
-                    
-                    release(&new_leader->lock);
-                    release(&leader->lock);
-                    leader = NULL;
-                }
-            } else {
-                release(&leader->lock);
-            }
-        }
-    } else {
-        // Single-threaded process
-        is_last_thread = 1;
     }
-
-    // Clean up process resources if last thread
-    if (is_last_thread) {
-        // Close open files
-        for (int fd = 0; fd < NOFILE; fd++) {
-            if (p->ofile[fd]) {
-                fileclose(p->ofile[fd]);
-                p->ofile[fd] = 0;
-            }
-        }
-        
-        // Free current working directory
-        begin_op();
-        if (p->cwd) {
-            iput(p->cwd);
-        }
-        end_op();
-        p->cwd = 0;
-
-        // Free page table and user memory
-        if (p->pagetable) {
-            proc_freepagetable(p->pagetable, p->sz);
-            p->pagetable = 0;
-            p->sz = 0;
-        }
-        
-        // Reparent children to init
-        acquire(&wait_lock);
-        reparent(p);
-        release(&wait_lock);
+    
+    // Free current working directory
+    begin_op();
+    if (p->cwd) {
+        iput(p->cwd);
     }
-
-    // Free the trapframe
-    if (p->trapframe) {
-        kfree((void*)p->trapframe);
-        p->trapframe = 0;
+    end_op();
+    p->cwd = 0;
+    
+    // Reparent children to init
+    acquire(&wait_lock);
+    reparent(p);
+    release(&wait_lock);
+    
+    // Free page table and memory if not already done
+    if (p->pagetable) {
+        proc_freepagetable(p->pagetable, p->sz);
+        p->pagetable = 0;
+        p->sz = 0;
     }
-
+    
     // Set state to ZOMBIE and notify parent
     p->xstate = status;
     p->state = ZOMBIE;
-
-    // Wake up parent if we're being waited on
+    
+    // Wake up parent
     acquire(&wait_lock);
     if (p->parent) {
         wakeup(p->parent);
     }
     release(&wait_lock);
-
-    // Release our lock and schedule
-    //release(&p->lock);
+    
+    // Schedule
     sched();
     panic("zombie exit");
 }
@@ -995,10 +978,8 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
     // Set thread-specific values
     np->trapframe->epc = (uint64)start_routine;  // Thread entry point
     
-    // Stack setup - critical for correct execution
-    uint64 stack_top = curr_group_sz + PGSIZE;
-    // Reserve space at top of stack and ensure 16-byte alignment
-    np->trapframe->sp = (stack_top - 16) & ~0xF;
+    // Reserve space at top of stack and ensure alignment
+    np->trapframe->sp = curr_group_sz + PGSIZE - 8;
     
     // Argument passing
     np->trapframe->a0 = (uint64)arg;
@@ -1007,7 +988,7 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
     np->trapframe->ra = 0;  // Will cause trap if function returns without explicit exit
     
     // Set up the kernel context to return to user space
-    np->context.ra = (uint64)forkret;
+    np->context.ra = (uint64)threadret;
     np->context.sp = np->kstack + PGSIZE;                    // kernel stack pointer
 
     // Copy file descriptors
