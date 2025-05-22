@@ -362,19 +362,22 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 }
 
 
+//Shares mapped pages from src page table into dest page table
 int uvmshare(pagetable_t src, pagetable_t dest, uint64 sz) {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
 
+  //gets the virtual address of each page in the src page table
   for (i = 0; i < sz; i += PGSIZE) {
     pte = walk(src, i, 0);
     if (pte == 0 || (*pte & PTE_V) == 0) {
       continue; // hole, skip
     }
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
+    pa = PTE2PA(*pte); //gets the physical address of the page
+    flags = PTE_FLAGS(*pte); //gets the flags of the page
 
+    //maps the page into the dest page table
     if(mappages(dest, i, PGSIZE, pa, flags) != 0) {
       return -1;
     }

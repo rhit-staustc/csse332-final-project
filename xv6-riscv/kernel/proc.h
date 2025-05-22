@@ -112,4 +112,6 @@ struct proc {
   struct proc *group_leader;  //original parent thread that calls thread create
   struct proc *group_next;    //next sibling thread in the family
   struct proc *group_prev; 
+
+  int num_children; //number of children threads created by this thread
 };

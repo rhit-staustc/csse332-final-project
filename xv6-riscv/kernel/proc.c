@@ -129,6 +129,7 @@ found:
   p->group_leader = NULL;
   p->group_prev = NULL;
   p->group_next = NULL;
+  p->num_children = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -776,6 +777,7 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   // 4. allocates empty user page table
   // 5. sets up new context to start executing at forkret
   // (which returns to user space? not sure what that means)
+  // this calls uvmcreate to allocate new page table
   if((np = allocproc()) == 0){
     return -1;
   }
@@ -785,7 +787,8 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   // result is two separate address spaces with initially identical contents
   
 
-  // share user pages instead of copying 
+  // shares mapped pages from parent page table into child page table
+  // by finding the physical address of each page in the parent page table
   if(uvmshare(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
@@ -794,19 +797,65 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
   np->sz = p->sz;
 
   // give new thread a one page stack
+  np->tid = p->num_children++;
   uint64 stack_addr = PGROUNDUP(np->sz) + PGSIZE * np->tid; // one stack per tid
   if (mappages(np->pagetable, stack_addr, PGSIZE, (uint64)kalloc(), PTE_W|PTE_R|PTE_U) < 0) {
     freeproc(np);
     release(&np->lock);
     return -1;
   }
-  np->sz = stack_addr + PGSIZE; //-8 // increment memory size
+
+  // FAMILY LINKED LIST STUFF
+  // This will add the thread to its family, update family sz, and map new stack onto page table
+  // of every thread in family
+  acquire(&p->lock);
+  struct proc *leader = (p->group_leader ? p->group_leader : p); 
+
+  if(p->group_leader == NULL) { //if this is the first thread in its family
+	p->group_leader = p;
+	p->group_next = p;
+	p->group_prev = p;
+  } 
+
+  //insert new process into circular linked list 
+  np->group_leader = leader;
+  np->tid = leader->num_children++;
+
+  np->group_prev = leader;
+  np->group_next = leader->group_next;
+  leader->group_next->group_prev = np;
+  leader->group_next = np;
+  
+  //Now that in linked list, increment sz of all threads in the family
+  struct proc *q = leader;
+  uint64 new_sz = p->sz + PGSIZE; 
+  do {
+    if(q == p) {
+      q->sz = new_sz;
+      mappages(q->pagetable, stack_addr, PGSIZE, (uint64)kalloc(), PTE_W|PTE_R|PTE_U);
+    } else if(q == np) {
+      q->sz = new_sz;
+    } else {
+      //already holding lock for p or np
+        acquire(&q->lock);
+        q->sz = new_sz;
+        mappages(q->pagetable, stack_addr, PGSIZE, (uint64)kalloc(), PTE_W|PTE_R|PTE_U);
+        release(&q->lock);
+    }
+    q = q->group_next;
+  } while(q != leader);
+
+  //Then update pagetable of all threads in family with new stack mapping
+
+
+  release(&p->lock);  
+
 
   // set up registers
   *(np->trapframe) = *(p->trapframe); // copy saved user registers
   np->trapframe->epc = (uint64)start_routine; // where to start execution
   np->trapframe->a0 = (uint64)arg; // a0: argument register
-  np->trapframe->sp = stack_addr + PGSIZE; // set pointer to top of stack (grows down) 
+  np->trapframe->sp = stack_addr + PGSIZE - 8; // set pointer to top of stack (grows down) 
   //THIS IS FROM FORC - Copys file discriptor table
   for(int i = 0; i < NOFILE; i++) {
 	  if(p->ofile[i]) {
@@ -817,42 +866,10 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
 
   // modify struct proc
   np->is_thread = 1;
-  np->tid = np->pid; 
   safestrcpy(np->name, "kthread", sizeof("kthread"));
   np->parent = p;
 
-  //FAMILY LINKED LIST INSERTION
-  acquire(&p->lock);
-  struct proc *leader = (p->group_leader ? p->group_leader : p);
-
-  if(p->group_leader == NULL) { //if this is the first thread in its family
-	p->group_leader = p;
-	p->group_next = p;
-	p->group_prev = p;
-  } 
-
-
-  //insert new process into circular linked list 
-  np->group_leader = leader;
-  np->group_prev = leader;
-  np->group_next = leader->group_next;
-  leader->group_next->group_prev = np;
-  leader->group_next = np;
   
-  //DEBUG
-  /*
-  {
-  	struct proc *q = leader;
-	printf("Family insert: leader = %d chain:", leader->tid);
-	do {
-		printf(" %d", q->tid);
-		q = q->group_next;
-	} while(q != leader);
-	printf("\n");
-  }
-  */
-
-  release(&p->lock);  
 
 
   np->state = RUNNABLE;

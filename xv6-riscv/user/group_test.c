@@ -38,89 +38,25 @@ struct ctx {
 void
 thread_fn(void *arg)
 {
-  struct ctx *c = (struct ctx*)arg;
-
-  // wait until parent/child flips its ready flag
-  while (*(c->flag) == 0) ;
-  __sync_synchronize();
-
-  c->r->tid = getpid();
-  c->r->n   = getfamily(c->r->fam, MAXF);
+  sleep(10);
+  printf("Thread %d: Hello, world!\n", *(int*)arg);
 
   exit(0);
-}
-
-// spawn n threads, flip flag, join; store into rec[]
-static void
-run_family(int n, struct rec *rb, volatile int *flag)
-{
-  struct ctx  ctxs[n];
-  int         tids[n];
-
-  for (int i = 0; i < n; i++) {
-    ctxs[i].r    = &rb[i];
-    ctxs[i].flag = flag;
-    tids[i]      = thread_create(thread_fn, &ctxs[i]);
-    if (tids[i] < 0) {
-      printf("thread_create %d failed\n", i);
-      exit(1);
-    }
-  }
-
-  // release all threads
-  __sync_synchronize();
-  *flag = 1;
-
-  for (int i = 0; i < n; i++)
-    thread_join(tids[i]);
-}
-
-static void
-show(const char *tag, struct rec *r)
-{
-  if (r->n < 0) {
-    printf("%s TID %d getfamily failed\n", tag, r->tid);
-    return;
-  }
-  printf("%s TID %d family(%d):", tag, r->tid, r->n);
-  for (int i = 0; i < r->n; i++)
-    printf(" %d", r->fam[i]);
-  printf("\n");
 }
 
 int
 main(void)
 {
-  static struct rec recA[NA];
-  static struct rec recB[NB];
+  printf("Group test: Creating one thread\n");
 
-  printf("=== multiple-family test ===\n");
+  int tid = thread_create(thread_fn, 0);
+  printf("Created thread %d\n", tid);
 
-  // ─── parent builds Family A ───
-  printf("Parent: spawn %d threads (Family A)\n", NA);
-  run_family(NA, recA, &readyA);
+  sleep(10);
 
-  for (int i = 0; i < NA; i++)
-    show("Family A:", &recA[i]);
-
-  // ─── fork; child builds Family B ───
-  int pid = fork();
-  if (pid < 0) {
-    printf("fork failed\n");
-    exit(1);
-  }
-  if (pid == 0) {                     // child
-    printf("Child: spawn %d threads (Family B)\n", NB);
-    run_family(NB, recB, &readyB);
-    for (int i = 0; i < NB; i++)
-      show("Family B:", &recB[i]);
-    printf("Child done.\n");
-    exit(0);
-  }
-
-  // parent waits for child
-  wait(0);
-  printf("Parent done.\n");
   exit(0);
+
+
+  
 }
 
