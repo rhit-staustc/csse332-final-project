@@ -6,15 +6,15 @@
 extern int thread_create(void (*)(void *), void *);
 extern int thread_join(int);
 
-int knife_thread_create(knife_thread_t *thread,
+int knife_thread_create(knife_thread_t *knife_tid,
                         void (*thread_fn)(void *), 
                         void *arg) {
-  int pid = thread_create(thread_fn, arg);
-  if (pid < 0) {
+  int tid = thread_create(thread_fn, arg);
+  if (tid < 0) {
     return -1;
   }
-  if (thread) {
-    *thread = pid;
+  if (tid) {
+    *knife_tid = tid;
   }
   return 0;
 }
