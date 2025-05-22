@@ -309,6 +309,18 @@ void uvmfree_shared(pagetable_t pagetable, uint64 sz) {
 
 }
 
+void uvmfree_shared_thread(pagetable_t pagetable, uint64 sz) {
+  if (sz == 0) {
+    panic("uvmfree_shared: sz is 0");
+  }
+
+  for (uint64 a = 0; a < sz; a += PGSIZE) {
+    free_user_page_thread(pagetable, a);
+  }
+  freewalk(pagetable); // free the page table pages
+
+}
+
 // When threads shrae the same physical user pages,
 // the page must be freed only after the last thread exits.
 void free_user_page(pagetable_t pagetable, uint64 va) {
@@ -320,6 +332,20 @@ void free_user_page(pagetable_t pagetable, uint64 va) {
   if (kref_dec(pa) == 0) {
     // if the reference count is zero, free the page
     kfree((void*)pa);
+  }
+  *pte = 0; // unmap the page
+}
+
+void free_user_page_thread(pagetable_t pagetable, uint64 va) {
+  pte_t *pte = walk(pagetable, va, 0);
+  if(pte == 0 || (*pte & PTE_V) == 0)
+    return; // unmapped, so there is nothing to do
+  
+  uint64 pa = PTE2PA(*pte);
+  if (kref_dec(pa) == 0) {
+    // if the reference count is zero, free the page
+    //dont free the physical page at the end to avoid double free
+    //kfree((void*)pa);
   }
   *pte = 0; // unmap the page
 }

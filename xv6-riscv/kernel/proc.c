@@ -146,11 +146,6 @@ found:
     release(&p->lock);
     return 0;
   }
-
-  memset(&p->context, 0, sizeof(p->context));
-  p->context.ra = (uint64)forkret;
-  p->context.sp = p->kstack + PGSIZE;
-
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -205,7 +200,7 @@ freeproc(struct proc *p)
           }
 
           if(q->pagetable) {
-            //proc_freepagetable(q->pagetable, q->sz);
+            proc_freepagetable_thread(q->pagetable, q->sz);
             q->pagetable = 0;
             q->sz = 0;
           }
@@ -215,6 +210,7 @@ freeproc(struct proc *p)
           q->group_prev = 0;
           q->is_thread = 0;
           q->tid = 0;
+          q->cwd = 0;
 
           q->state = UNUSED;
           release(&q->lock);
@@ -229,17 +225,15 @@ freeproc(struct proc *p)
         p->trapframe = 0;
       }
       
-      // Only the leader should free the shared page table
       if(p->pagetable) {
-        proc_freepagetable(p->pagetable, p->sz);
+        proc_freepagetable(p->pagetable, p->sz); // Only the leader should free the physical page 
         p->pagetable = 0;
         p->sz = 0;
-        q->group_leader = 0;
-        q->group_next = 0;
-        q->group_prev = 0;
-        q->is_thread = 0;
-        q->tid = 0;
-
+        p->group_leader = 0;
+        p->group_next = 0;
+        p->group_prev = 0;
+        p->is_thread = 0;
+        p->tid = 0;
       }
       
       p->state = UNUSED;
@@ -254,24 +248,22 @@ freeproc(struct proc *p)
           proc_freepagetable(p->pagetable, p->sz);
           p->pagetable = 0;
           p->sz = 0;
-          p->pid = 0;
-          p->parent = 0;
-          p->name[0] = 0;
-          p->chan = 0;
-          p->killed = 0;
-          p->xstate = 0;
-          p->group_leader = 0;
-          p->group_next = 0;
-          p->group_prev = 0;
-          p->is_thread = 0;
-          p->tid = 0;
-          p->state = UNUSED;
         }
-
+        
+        // Always clean up these fields, even if pagetable is NULL
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->chan = 0;
+        p->killed = 0;
+        p->xstate = 0;
+        p->group_leader = 0;
+        p->group_next = 0;
+        p->group_prev = 0;
+        p->is_thread = 0;
+        p->tid = 0;
+        p->state = UNUSED;
     }
-   
-  
-
   
 }
 
@@ -319,6 +311,13 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmfree_shared(pagetable, sz); // use refcount aware free
 }
 
+//this version does NOT free the physical page at the end to avoid double free
+void
+proc_freepagetable_thread(pagetable_t pagetable, uint64 sz) {
+  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+  uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmfree_shared_thread(pagetable, sz); // use refcount aware free
+}
 
 // a user program that calls exec("/init")
 // assembled from ../user/initcode.S
@@ -540,6 +539,7 @@ exit(int status)
     
     if (p->is_thread) {
         // For threads, use thread_exit
+        printf("thread exit\n");
         thread_exit();
         return; // Never reached
     }
@@ -969,7 +969,6 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
     uint64 curr_group_sz, new_group_sz;
     void *stack_page_physical;
     struct proc *leader;
-    int i;
 
     // Allocate process with allocproc(0) to skip page table allocation
     if((np = allocproc(0)) == 0) {
@@ -1024,14 +1023,8 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
     }
     memset(stack_page_physical, 0, PGSIZE);
 
-    // Map the stack page
-    // if(mappages(np->pagetable, curr_group_sz, PGSIZE, 
-    //   (uint64)stack_page_physical, PTE_W|PTE_R|PTE_U) < 0) {
-    //     kfree(stack_page_physical);
-    //     goto bad;
-    // }
-
-    // Update size for all threads in group
+     // Update size for all threads in group
+     // map the stack page
     struct proc *q = leader;
     do {
         q->sz = new_group_sz;
@@ -1043,21 +1036,14 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
     } while (q != leader);
 
     // First copy the parent's trapframe
-    *np->trapframe = *p->trapframe;
-
-    
+    *np->trapframe = *p->trapframe;    
     np->trapframe->epc = (uint64)start_routine;  // Thread entry point
     np->trapframe->sp = curr_group_sz + PGSIZE - 8;
-    
-    // Argument passing
-    np->trapframe->a0 = (uint64)arg;
-    
-    // For proper thread exit handling
+    np->trapframe->a0 = (uint64)arg; //arg passing
     np->trapframe->ra = 0;  // Will cause trap if function returns without explicit exit
 
-
     // Copy file descriptors
-    for(i = 0; i < NOFILE; i++) {
+    for(int i = 0; i < NOFILE; i++) {
         if(p->ofile[i]) {
             np->ofile[i] = filedup(p->ofile[i]);
         }
@@ -1113,23 +1099,6 @@ uint64 thread_join(int thread_id)
                 if(tp->state == ZOMBIE) {
                     // Found one
                     int tid = tp->tid;  // Store tid before freeing
-                    
-                    // // Free the thread's stack
-                    // uint64 stack_addr = PGROUNDDOWN(tp->trapframe->sp);
-                    // if(stack_addr != 0) {
-                    //     // Find the PTE for the stack
-                    //     pte_t *pte = walk(p->pagetable, stack_addr, 0);
-                    //     if(pte && (*pte & PTE_V)) {
-                    //         // Get the physical address and free it
-                    //         uint64 pa = PTE2PA(*pte);
-                    //         if(pa) {
-                    //             // Mark the page as invalid
-                    //             *pte = 0;
-                    //             // Free the physical memory
-                    //             kfree((void*)pa);
-                    //         }
-                    //     }
-                    
                     
                     //printf("thread_join: freeproc\n");
                     freeproc(tp);
