@@ -118,3 +118,13 @@ uint64 sys_thread_exit(void)
     thread_exit();
     return 0;  // This line should never be reached
 }
+
+uint64 sys_getfamily(void)
+{
+	return getfamily();
+}
+
+uint64 sys_getstatus(void)
+{
+	return getstatus();
+}

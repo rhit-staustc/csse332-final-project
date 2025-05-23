@@ -932,7 +932,7 @@ uint64 spoon(void *arg)
 	return 0;
 }
 
-uint64 sys_getfamily(void) {
+uint64 getfamily(void) {
 	int *buf, max;
 	struct proc *cur = myproc();
 
@@ -962,6 +962,29 @@ uint64 sys_getfamily(void) {
 	return count;
 }
 
+// Get the status of a thread with the given thread ID
+uint64 getstatus(void) {
+    int tid;
+    struct proc *cur = myproc();
+    
+    argint(0, &tid);
+    
+    // Get the thread group leader
+    struct proc *leader = cur->group_leader ? cur->group_leader : cur;
+    
+    // Search for the thread in the group
+    struct proc *p = leader;
+    do {
+        if(p->tid == tid) {
+            // Found the thread, return its status
+            return p->state;
+        }
+        p = p->group_next;
+    } while(p != leader);
+    
+    // Thread not found
+    return -1;
+}
 
 uint64 thread_create(void (*start_routine)(void*), void *arg)
 {

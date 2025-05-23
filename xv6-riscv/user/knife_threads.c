@@ -29,3 +29,13 @@ void knife_thread_exit(void) {
   printf("thread_exit returned! This should never happen.\n");
   exit(-1);
 }
+
+int knife_getfamily(int *buf, int max) {
+  return getfamily(buf, max);
+}
+
+int knife_getstatus(int tid) {
+  return getstatus(tid);
+}
+
+
