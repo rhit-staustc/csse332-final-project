@@ -116,7 +116,7 @@ allocpid()
 // and return with p->lock held.
 // If there are no free procs, or a memory allocation fails, return 0.
 static struct proc*
-allocproc(int alloc_pagetable)
+allocproc(void)
 {
   struct proc *p;
 
@@ -251,6 +251,7 @@ freeproc(struct proc *p)
         }
         
         // Always clean up these fields, even if pagetable is NULL
+        // pagetable error or never had one 
         p->pid = 0;
         p->parent = 0;
         p->name[0] = 0;
@@ -339,7 +340,7 @@ userinit(void)
 {
   struct proc *p;
 
-  p = allocproc(1);
+  p = allocproc();
   initproc = p;
   
   // allocate one user page and copy initcode's instructions
@@ -389,7 +390,7 @@ fork(void)
   struct proc *p = myproc();
 
   // Allocate process.
-  if((np = allocproc(1)) == 0){
+  if((np = allocproc()) == 0){
     return -1;
   }
 
@@ -970,8 +971,7 @@ uint64 thread_create(void (*start_routine)(void*), void *arg)
     void *stack_page_physical;
     struct proc *leader;
 
-    // Allocate process with allocproc(0) to skip page table allocation
-    if((np = allocproc(0)) == 0) {
+    if((np = allocproc()) == 0) {
         return -1;
     }
 

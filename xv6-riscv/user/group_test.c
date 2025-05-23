@@ -27,8 +27,20 @@ int main(void)
     }
     printf("Created thread %d\n", tid);
 
+    knife_thread_t tid2;
+    if (knife_thread_create(&tid2, thread_fn, arg) < 0) {
+        printf("Failed to create thread\n");
+        exit(-1);
+    }
+    printf("Created thread %d\n", tid2);
+
     // Wait specifically for our thread to finish
     if (knife_thread_join(tid) < 0) {
+        printf("Failed to join thread\n");
+        exit(-1);
+    }
+
+    if (knife_thread_join(tid2) < 0) {
         printf("Failed to join thread\n");
         exit(-1);
     }
