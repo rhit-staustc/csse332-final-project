@@ -540,7 +540,7 @@ exit(int status)
     
     if (p->is_thread) {
         // For threads, use thread_exit
-        printf("thread exit\n");
+        //printf("thread exit\n");
         thread_exit();
         return; // Never reached
     }
