@@ -7,44 +7,46 @@ Date: 5/19/25
 High level description
 ======================
 
-Add a high level description of your project here. Make sure to summarize all
-the features that you have designed.
+Up to this point, we have create and join working. We also have managed to implement shared memory, but there
+are still problems with memory leaks and trapframe errors sometimes.
 
 Thread creation
 ================
 
-Describe the decisions you have made for thread create, including answers to
-the questions above.
+Thread create currently allocates a process with allocproc. Currently, there are problems with our page table 
+implementations for children, but we are working on figuring that out. The parent and child are mapped to the 
+same physical memory which enables memory sharing. Also, the parent thread trapframe is copied and the child
+modifes important elements like ra, sp, a0, and epc. Lastly, the new thread is inserted into the linked list.
 
 Memory sharing
 ===============
 
-Describe how you have implemented the sharing of the address space in this
-milestone, including answers to any questions in the description above.
-
 In kalloc.c, we added an refcount[], indexed by page number. kref_inc(pa) and kref_dec(pa) increment and decrement the reference count. kalloc initializes a page with refcount = 1, and kfree frees RAM only when refcount reaches zero.
 
-In vm.c, we daded uvmshare(src, dest, sz), which walks the parent's page table, remaps each present user PTE into the child pagetable with the same permissions, and calls kref_inc. Holes in the address space are skipped.
+In vm.c, we added uvmshare(src, dest, sz), which walks the parent's page table, remaps each present user PTE into the child pagetable with the same permissions, and calls kref_inc. Note that holes in the address space are skipped.
 
-In proc.c, we now call uvmshare, then map a new page as the new thread's user stack. The stack address is calculated with PGROUNDUP(proc->sz) + tid * PGSIZE, which is deterministic and non-overlapping.
-
-We replaced the old uvmfree with uvmfree_shared, which iterates over the exiting thread's mappings: for each leaf PTE it calls kref_dec and frees only when the refcount is 0, then deletes the PTE. This guarantees the requirement that pages survive until the last thread that references them exits, while page table pages are still freed immediately by freewalk.
+In proc.c, we now call uvmshare, then map a new page as the new thread's user stack. The stack address is calculated with PGROUNDUP(proc->sz) + tid * PGSIZE, which is non-overlapping.
 
 Test cases
 ===========
 
 - Describe the test case you used for the creation of the threads.
+For creation, we just need to make sure that our threads exist and can run. Thus, our first test is just 
+creating a thread with an argument and making sure that it can print that argument. This ensures that 
+the thread is running and can take/give input/output. We also have a thread run a loop and print iterations.
 
 - Describe the test case you used for testing shared memory between threads.
+To test memory between threads, we created a testing case where there is a shared global int in the test. We
+then create a reader and a writer thread. The writer thread will change the value of the int and the reader
+thread should see the new change and print out the changed int. 
 
 Additional comments
 ==================
 
-Add any addition comments, questions, or design decisions that you are
-considering for the final submission.
+We have some concurrency issues with printing that we want fixed. We also have some problems with memory 
+management. But those will be fixed going forward.
 
 Grade
 ======
-
-The grade you believe should be assigned to your group, with some argument as
-to why you chose that grade.
+We believe we earned full points for this milestone. We have a fully implemented (with small errors) create and
+join. We have threads that can run functions and related threads share memory.
