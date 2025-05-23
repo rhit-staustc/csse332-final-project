@@ -41,3 +41,4 @@ entry("thread_create");  # This is 23
 entry("thread_join");    # This is 24
 entry("thread_exit");    # This is 25
 entry("getfamily");
+entry("getstatus");
