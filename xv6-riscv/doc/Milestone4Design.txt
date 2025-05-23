@@ -1,0 +1,63 @@
+---
+title: Project Milestone 4
+Author(s): Amruth Annavaram, Kallen Selby, Tanner Staus
+Date: 5/23/25
+---
+
+High level description
+======================
+
+Our project features basic thread creation, joining, and exits. To track lineage, we used a circular linked
+list. 
+
+(M2) Thread creation
+====================
+
+For thread creation, we use allocproc to create the entry for the thread. Then, we copy the parent page table
+using uvmshare. Keep in mind that while the page table is new, the actual physical memory that both processes
+are mapped to are the same. Each thread also gets its own stack added on. Continuing, the parent trapframe is
+also copied and then specific elements (epc, sp, a0, ra) are set for the new process. Lastly, the new thread is
+also inserted into our linked list. 
+
+(M3) Memory sharing
+===================
+
+As briely alluded to in the past section, we implemented memory sharing by using uvmshare. Uvmshare maps the
+old parent table to the new child table. This way, the threads can share their globals, code, and heap. However,as previously mentioned, they do not share stacks, each thread gets its own memory stack.
+
+(M4) Memory udates
+===================
+
+Describe the approach you have taken to propagate updates to the page table
+from one thread to all of the other ones. Make sure to discuss how threads can
+find out about other threads in the same address space, and then how to page
+table updates are mapped out.
+
+Test cases
+===========
+
+- (M2) Describe the test case you used for the creation of the threads.
+For this milestone, our tests were relatively basic. Since we only needed thread creation, and no other 
+functionality for cleaning up or any management at all, we figured we just needed our threads to run and print
+something. So the M2 tests cases were just creating a thread with an argument and then printing to the console
+thru that thread. We also had a loop case where a thread runs a loop a few times and prints. Notably the threadsdo not end.
+
+- (M3) Describe the test case you used for testing shared memory between threads.
+For this milestone, since we knew that our creation was working alright, we figured we primarily needed to test that two related threads could actually see what the other was writing to memory. So, we setup a simple test 
+where there is a reader and a writer thread. The writer thread will change the value of an int and the reader 
+is supposed to have the changed value of that int instead of the old value.
+
+- (M4) Describe the test case(s) you used for testing the propagation of the
+  updates on the page table.
+
+Additional comments
+==================
+
+Add any addition comments, questions, or design decisions that you are
+considering for the final submission.
+
+Grade
+======
+We believe we have earned an A. 
+The grade you believe should be assigned to your group, with some argument as
+to why you chose that grade.
