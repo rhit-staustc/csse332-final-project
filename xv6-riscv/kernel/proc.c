@@ -170,7 +170,6 @@ static void
 freeproc(struct proc *p)
 {
   //printf("freeproc: pid %d\n", p->pid);
-  //if its a user-level thread, only free its trapframe, leave pagetable alone
   if(p->group_leader) {
       if(p->group_leader->ref_count > 0) {
         p->group_leader->ref_count--;
@@ -182,6 +181,7 @@ freeproc(struct proc *p)
 
       if(p != p->group_leader) {
         //printf("freeproc: non-leader thread\n");
+        //set it to a ghost so that thread_join doesnt infinte loop
         p->state = GHOST;
         return;
       }
@@ -196,7 +196,6 @@ freeproc(struct proc *p)
         next = q->group_next;  // Save next before modifying q
         
         acquire(&q->lock);
-        // Only free trapframe for non-leader threads
         if(q->trapframe) {
           kfree((void*)q->trapframe);
           q->trapframe = 0;
@@ -226,8 +225,7 @@ freeproc(struct proc *p)
 
   }
       
-      
-      // Now free the leader's resources (self)
+      // Now free the leader's resources 
       //printf("FREEEING P\n");
       if(p->trapframe) {
         kfree((void*)p->trapframe);
@@ -354,18 +352,74 @@ userinit(void)
 int
 growproc(int n)
 {
-  uint64 sz;
+  //printf("growproc: n = %d\n", n);
   struct proc *p = myproc();
+  uint64 current_sz = p->sz;
+  uint64 new_sz;
 
-  sz = p->sz;
-  if(n > 0){
-    if((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0) {
-      return -1;
-    }
-  } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+  if (n == 0) {
+    return 0;
   }
-  p->sz = sz;
+
+  if (n > 0) {
+    new_sz = uvmalloc(p->pagetable, current_sz, current_sz + n, PTE_W);
+    if (new_sz == 0) { // uvmalloc failed
+      printf("growproc: uvmalloc failed for pid %d\n", p->pid);
+      return -1; 
+    }
+
+    if (p->group_leader) { 
+      for (uint64 va = current_sz; va < new_sz; va += PGSIZE) {
+        pte_t *pte = walk(p->pagetable, va, 0); // Get PTE
+        uint64 pa_to_map = PTE2PA(*pte); // physical address from PTE
+
+        struct proc *leader = p->group_leader;
+        struct proc *q = leader;
+        do {
+          if (q != p) { 
+            if (mappages(q->pagetable, va, PGSIZE, pa_to_map, PTE_W | PTE_R | PTE_U) < 0) {
+              printf("growproc: failed to map page va=%p pa=%p for thread pid=%d\n", 
+                     va, pa_to_map, q->pid);
+              return -1; 
+            }
+          }
+
+          q = q->group_next;
+        } while (q != leader);
+      }
+    }
+
+  } else { 
+    new_sz = uvmdealloc(p->pagetable, current_sz, current_sz + n);
+
+    if (p->group_leader) {
+      for (uint64 va = new_sz; va < current_sz; va += PGSIZE) {
+        struct proc *leader = p->group_leader;
+        struct proc *q = leader;
+        do {
+          if (q != p) {
+            uvmunmap(q->pagetable, va, 1, 1); 
+          }
+          
+          q = q->group_next;
+        } while (q != leader);
+      }
+    }
+  }
+  
+  // size update for all threads in the group or standalone
+  if (p->group_leader == NULL) { 
+    p->sz = new_sz;
+  } else { 
+    struct proc *leader = p->group_leader;
+    struct proc *iter_proc = leader;
+    do {
+      iter_proc->sz = new_sz;
+      iter_proc = iter_proc->group_next;
+    } while (iter_proc != leader);
+  }
+  
+  //printf("growproc: returning 0\n");
   return 0;
 }
 
@@ -471,49 +525,6 @@ thread_exit(void)
     if (p != leader) {
         release(&leader->lock);
     }
-    
-    // Update thread group linked list
-    // if (p->group_next != p) {
-    //     // Get the leader's lock if this is not the leader
-    //     if (p != leader) {
-    //         acquire(&leader->lock);
-    //     }
-        
-    //     // Remove this thread from the circular list
-    //     p->group_prev->group_next = p->group_next;
-    //     p->group_next->group_prev = p->group_prev;
-        
-    //     // Update reference count
-    //     if (leader->ref_count > 0) {
-    //         leader->ref_count--;
-    //     }
-        
-    //     // If this is the leader but not the last thread, promote a new leader
-    //     if (p == leader && leader->ref_count > 0 && p->group_next) {
-    //         struct proc *new_leader = p->group_next;
-    //         acquire(&new_leader->lock);
-            
-    //         // Update all threads to point to the new leader
-    //         struct proc *t = new_leader;
-    //         do {
-    //             if (t != new_leader) {
-    //                 acquire(&t->lock);
-    //             }
-    //             t->group_leader = new_leader;
-    //             if (t != new_leader) {
-    //                 release(&t->lock);
-    //             }
-    //             t = t->group_next;
-    //         } while (t != new_leader);
-            
-    //         release(&new_leader->lock);
-    //     }
-        
-    //     // Release leader's lock if acquired
-    //     if (p != leader) {
-    //         release(&leader->lock);
-    //     }
-    // }
     
     // Mark as zombie and set exit status
     p->xstate = 0;  // Exit status 0 for normal thread exit
@@ -963,11 +974,7 @@ uint64 getfamily(void) {
 		if(count >= max)
 			break;
 		
-		if(copyout(cur->pagetable,
-			(uint64)buf + count * sizeof(int),
-			(char*)&p->tid,
-			sizeof(int)) < 0) {
-
+		if(copyout(cur->pagetable, (uint64)buf + count * sizeof(int), (char*)&p->tid, sizeof(int)) < 0) {
 			return -1;
 		}
 
@@ -992,7 +999,7 @@ uint64 getstatus(void) {
     struct proc *p = leader;
     do {
         if(p->tid == tid) {
-            // Found the thread, return its status
+            //return its status
             return p->state;
         }
         p = p->group_next;

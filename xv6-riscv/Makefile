@@ -140,6 +140,7 @@ UPROGS=\
 	$U/_combined_test\
 	$U/_group_test\
 	$U/_thread_status_test\
+	$U/_memory_update_test\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
