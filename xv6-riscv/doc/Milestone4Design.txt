@@ -49,6 +49,10 @@ is supposed to have the changed value of that int instead of the old value.
 
 - (M4) Describe the test case(s) you used for testing the propagation of the
   updates on the page table.
+The main tests at this stage are thread_status_test and group_test. In group_test, two threads are created, then they exit, and then they join. This follows the cycle that we are trying to replicate. Notably, the resources stay allocated for both processes until both are done, then their resources are freed once the parent process
+has exited. In thread_status_test, three treads are created. One sleeps for a while then exits, one counts for a while then exits, and the last one
+exits immediately. Then all three threads are joined. In this test, we have various print statements that test that the right things are happening
+at the right times, especially the states.  
 
 Additional comments
 ==================
@@ -58,6 +62,8 @@ considering for the final submission.
 
 Grade
 ======
-We believe we have earned an A. 
-The grade you believe should be assigned to your group, with some argument as
-to why you chose that grade.
+We believe we have again earned most if not full points. We have a robust create, join, and exit which don't seem to have memory leaks. 
+Furthermore we implement a cirular linked list for lineage and succesfully add and remove elements from that linked list. We also
+added getter methods for family and status of threads.
+ 
+
