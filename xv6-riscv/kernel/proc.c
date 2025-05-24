@@ -169,7 +169,7 @@ found:
 static void
 freeproc(struct proc *p)
 {
-  printf("freeproc: pid %d\n", p->pid);
+  //printf("freeproc: pid %d\n", p->pid);
   //if its a user-level thread, only free its trapframe, leave pagetable alone
   if(p->group_leader) {
       if(p->group_leader->ref_count > 0) {
@@ -181,7 +181,7 @@ freeproc(struct proc *p)
       }
 
       if(p != p->group_leader) {
-        printf("freeproc: non-leader thread\n");
+        //printf("freeproc: non-leader thread\n");
         p->state = GHOST;
         return;
       }
@@ -189,7 +189,7 @@ freeproc(struct proc *p)
       // If ref_count is 0, free all other threads in the group
       struct proc *q = p->group_next;
       struct proc *next;
-      printf("freeproc: freeing group\n");
+      //printf("freeproc: freeing group\n");
       
       // Free all non-leader threads in the group
       while(q != p) {
@@ -220,7 +220,7 @@ freeproc(struct proc *p)
         q->state = UNUSED;
         release(&q->lock);
         
-        printf("MADE IT HERE\n");
+        //printf("MADE IT HERE\n");
         q = next;
       }
 
@@ -228,7 +228,7 @@ freeproc(struct proc *p)
       
       
       // Now free the leader's resources (self)
-      printf("FREEEING P\n");
+      //printf("FREEEING P\n");
       if(p->trapframe) {
         kfree((void*)p->trapframe);
         p->trapframe = 0;
@@ -251,7 +251,7 @@ freeproc(struct proc *p)
       p->killed = 0;
       
       // p->state = UNUSED;
-      printf("RETURNNING\n");
+      //printf("RETURNNING\n");
       return;
   
   

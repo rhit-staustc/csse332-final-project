@@ -25,7 +25,7 @@ void sleeping_thread_func(void *arg) {
 void compute_thread_func(void *arg) {
     //printf("T_compute (%d) starting computation.\n", getpid());
     volatile int sum = 0; // volatile to prevent optimization
-    for (long i = 0; i < 1000000000; i++) { // Increased loop for longer computation
+    for (long i = 0; i < 100000000; i++) { // Increased loop for longer computation
         sum += i;
     }
     //printf("T_compute (%d) finished computation, sum: %d. Exiting.\n", getpid(), sum);
@@ -47,6 +47,7 @@ const char* get_status_string_local(int status_val) {
         case RUNNABLE: return "RUNNABLE";
         case RUNNING: return "RUNNING";
         case ZOMBIE: return "ZOMBIE"; // Rarely seen by getstatus due to unlinking first
+        case GHOST: return "GHOST";
         default: return "UNKNOWN/UNLINKED (-1)";
     }
 }
@@ -90,21 +91,19 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < num_family_members; i++) {
         printf("%d ", family_tids[i]);
     }
-    //printf(" (Note: main is 0, may not include already exited/unlinked threads)\n");
 
-    sleep(10); // More time. T_compute might finish. T_sleep still sleeping.
+    sleep(20); //T_compute should finish. T_sleep still sleeping.
 
-    printf("Status check 2 (after 11 total ticks):\n");
+    printf("Status check 2 (after 21 total ticks):\n");
     print_all_statuses(tid_sleep, tid_compute, tid_exit_early);
-    // Expected: T_sleep:SLEEPING, T_compute:UNKNOWN (if done) or RUNNING/RUNNABLE, T_exit_early:UNKNOWN
+
 
     sleep(22); // More time. T_sleep should finish now or soon. T_compute definitely done.
-    printf("Status check 3 (after 33 total ticks):\n");
+    printf("Status check 3 (after 43 total ticks):\n");
     print_all_statuses(tid_sleep, tid_compute, tid_exit_early);
-    // Expected: T_sleep:UNKNOWN (if done), T_compute:UNKNOWN, T_exit_early:UNKNOWN
+    // Expected: all zombies
 
-    //printf("Joining threads...\n");
-    //printf("Attempting to join T_sleep(%d)...\n", tid_sleep);
+
     thread_join(tid_sleep);
     //printf("Joined T_sleep(%d).\n", tid_sleep);
 
@@ -116,9 +115,8 @@ int main(int argc, char *argv[]) {
     thread_join(tid_exit_early);
     //printf("Joined T_exit_early(%d).\n", tid_exit_early);
     
-    printf("All threads joined.\n");
     
-    printf("Final status check (after join, all should be UNKNOWN/UNLINKED as they are reaped):\n");
+    printf("Final status check (after join, all should be GHOSTS as they have joined):\n");
     print_all_statuses(tid_sleep, tid_compute, tid_exit_early);
 
     //printf("Thread status test finished.\n");

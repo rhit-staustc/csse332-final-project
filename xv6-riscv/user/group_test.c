@@ -3,12 +3,9 @@
 #include "user/user.h"
 #include "knife_threads.h"
 
-// ───────────────── thread entry ─────────────────
-// In thread_fn:
 void thread_fn(void *arg)
 {
-    //printf("Thread %d: Hello, world!\n", *(int*)arg);
-    free(arg);  // Don't forget to free the allocated memory
+    free(arg); 
     knife_thread_exit();
 }
 
