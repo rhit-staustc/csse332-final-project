@@ -214,6 +214,8 @@ freeproc(struct proc *p)
           q->is_thread = 0;
           q->tid = 0;
           q->cwd = 0;
+          q->num_children = 0;
+          q->ref_count = 0;
 
           q->state = UNUSED;
           release(&q->lock);
@@ -241,6 +243,7 @@ freeproc(struct proc *p)
       // }
       
       // p->state = UNUSED;
+      printf("RETURNNING\n");
       return;
     // } else {
     //   //if full process, full tear-down
@@ -568,10 +571,11 @@ exit(int status)
     
     // Free open files
 
-    if(p->num_children > 0) {
-      printf("in family\n");
-      freeproc(p->group_leader);
-    }
+    // if(p->num_children > 0) {
+    //   printf("in family\n");
+    //   freeproc(p->group_leader);
+    //   printf("FREED GROUP\n");
+    // }
 
     for (int fd = 0; fd < NOFILE; fd++) {
         if (p->ofile[fd]) {
