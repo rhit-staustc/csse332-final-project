@@ -171,7 +171,7 @@ freeproc(struct proc *p)
 {
   printf("freeproc: pid %d\n", p->pid);
   //if its a user-level thread, only free its trapframe, leave pagetable alone
-  //if(p->is_thread) {
+  if(p->group_leader) {
       if(p->group_leader->ref_count > 0) {
         p->group_leader->ref_count--;
       }
@@ -187,91 +187,73 @@ freeproc(struct proc *p)
       }
       
       // If ref_count is 0, free all other threads in the group
-        struct proc *q = p->group_next;
-        struct proc *next;
-        printf("freeproc: freeing group\n");
+      struct proc *q = p->group_next;
+      struct proc *next;
+      printf("freeproc: freeing group\n");
+      
+      // Free all non-leader threads in the group
+      while(q != p) {
+        next = q->group_next;  // Save next before modifying q
         
-        // Free all non-leader threads in the group
-        while(q != p) {
-          next = q->group_next;  // Save next before modifying q
-          
-          acquire(&q->lock);
-          // Only free trapframe for non-leader threads
-          if(q->trapframe) {
-            kfree((void*)q->trapframe);
-            q->trapframe = 0;
-          }
-
-          if(q->pagetable) {
-            proc_freepagetable_thread(q->pagetable, q->sz);
-            q->pagetable = 0;
-            q->sz = 0;
-          }
-
-          q->group_leader = 0;
-          q->group_next = 0;
-          q->group_prev = 0;
-          q->is_thread = 0;
-          q->tid = 0;
-          q->cwd = 0;
-          q->num_children = 0;
-          q->ref_count = 0;
-
-          q->state = UNUSED;
-          release(&q->lock);
-          
-          printf("MADE IT HERE\n");
-          q = next;
+        acquire(&q->lock);
+        // Only free trapframe for non-leader threads
+        if(q->trapframe) {
+          kfree((void*)q->trapframe);
+          q->trapframe = 0;
         }
+
+        if(q->pagetable) {
+          proc_freepagetable_thread(q->pagetable, q->sz);
+          q->pagetable = 0;
+          q->sz = 0;
+        }
+
+        q->group_leader = 0;
+        q->group_next = 0;
+        q->group_prev = 0;
+        q->is_thread = 0;
+        q->tid = 0;
+        q->cwd = 0;
+        q->num_children = 0;
+        q->ref_count = 0;
+
+        q->state = UNUSED;
+        release(&q->lock);
+        
+        printf("MADE IT HERE\n");
+        q = next;
+      }
+
+  }
       
       
       // Now free the leader's resources (self)
-      // if(p->trapframe) {
-      //   kfree((void*)p->trapframe);
-      //   p->trapframe = 0;
-      // }
+      printf("FREEEING P\n");
+      if(p->trapframe) {
+        kfree((void*)p->trapframe);
+        p->trapframe = 0;
+      }
       
-      // if(p->pagetable) {
-      //   proc_freepagetable(p->pagetable, p->sz); // Only the leader should free the physical page 
-      //   p->pagetable = 0;
-      //   p->sz = 0;
-      //   p->group_leader = 0;
-      //   p->group_next = 0;
-      //   p->group_prev = 0;
-      //   p->is_thread = 0;
-      //   p->tid = 0;
-      // }
+      p->pagetable = 0;
+      p->sz = 0;
+      p->group_leader = 0;
+      p->group_next = 0;
+      p->group_prev = 0;
+      p->is_thread = 0;
+      p->tid = 0;
+      p->state = UNUSED;
+      p->num_children = 0;
+      p->ref_count = 0;
+      p->cwd = 0;
+      p->parent = 0;
+      p->name[0] = 0;
+      p->chan = 0;
+      p->killed = 0;
       
       // p->state = UNUSED;
       printf("RETURNNING\n");
       return;
-    // } else {
-    //   //if full process, full tear-down
-    //     if(p->trapframe) {
-    //       kfree((void*)p->trapframe);
-    //       p->trapframe = 0;
-    //     }
-    //     if(p->pagetable) {
-    //       proc_freepagetable(p->pagetable, p->sz);
-    //       p->pagetable = 0;
-    //       p->sz = 0;
-    //     }
-        
-    //     // Always clean up these fields, even if pagetable is NULL
-    //     // pagetable error or never had one 
-    //     p->pid = 0;
-    //     p->parent = 0;
-    //     p->name[0] = 0;
-    //     p->chan = 0;
-    //     p->killed = 0;
-    //     p->xstate = 0;
-    //     p->group_leader = 0;
-    //     p->group_next = 0;
-    //     p->group_prev = 0;
-    //     p->is_thread = 0;
-    //     p->tid = 0;
-    //     p->state = UNUSED;
-    // }
+  
   
 }
 
@@ -577,6 +559,11 @@ exit(int status)
     //   printf("FREED GROUP\n");
     // }
 
+    // if(p->trapframe) {
+    //         kfree((void*)p->trapframe);
+    //         p->trapframe = 0;
+    // }
+
     for (int fd = 0; fd < NOFILE; fd++) {
         if (p->ofile[fd]) {
             fileclose(p->ofile[fd]);
@@ -616,6 +603,8 @@ exit(int status)
     release(&wait_lock);
     
     // Schedule
+
+    //printf("gonna do free\n");
     sched();
     panic("zombie exit");
 }

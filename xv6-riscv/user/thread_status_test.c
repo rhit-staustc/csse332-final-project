@@ -9,6 +9,7 @@
 #define RUNNABLE  3
 #define RUNNING   4
 #define ZOMBIE    5
+#define GHOST     6
 
 #define MAX_FAMILY_MEMBERS 10
 
