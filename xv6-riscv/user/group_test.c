@@ -7,7 +7,7 @@
 // In thread_fn:
 void thread_fn(void *arg)
 {
-    printf("Thread %d: Hello, world!\n", *(int*)arg);
+    //printf("Thread %d: Hello, world!\n", *(int*)arg);
     free(arg);  // Don't forget to free the allocated memory
     knife_thread_exit();
 }
@@ -15,7 +15,7 @@ void thread_fn(void *arg)
 // In main:
 int main(void)
 {
-    printf("Group test: Creating one thread\n");
+    printf("==GROUP TEST===\n");
 
     int *arg = malloc(sizeof(int));
     *arg = 58;
@@ -27,8 +27,12 @@ int main(void)
     }
     printf("Created thread %d\n", tid);
 
+
+    int *arg2 = malloc(sizeof(int));
+    *arg2 = 59;
+
     knife_thread_t tid2;
-    if (knife_thread_create(&tid2, thread_fn, arg) < 0) {
+    if (knife_thread_create(&tid2, thread_fn, arg2) < 0) {
         printf("Failed to create thread\n");
         exit(-1);
     }
@@ -40,11 +44,14 @@ int main(void)
         exit(-1);
     }
 
+    printf("Thread %d joined successfully\n", tid);
+
+
     if (knife_thread_join(tid2) < 0) {
         printf("Failed to join thread\n");
         exit(-1);
     }
 
-    printf("Thread %d joined successfully\n", tid);
+    printf("Thread %d joined successfully\n", tid2);
     exit(0);
 }

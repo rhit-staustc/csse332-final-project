@@ -169,8 +169,9 @@ found:
 static void
 freeproc(struct proc *p)
 {
+  printf("freeproc: pid %d\n", p->pid);
   //if its a user-level thread, only free its trapframe, leave pagetable alone
-  if(p->is_thread) {
+  //if(p->is_thread) {
       if(p->group_leader->ref_count > 0) {
         p->group_leader->ref_count--;
       }
@@ -180,13 +181,15 @@ freeproc(struct proc *p)
       }
 
       if(p != p->group_leader) {
-        //printf("freeproc: non-leader thread\n");
+        printf("freeproc: non-leader thread\n");
+        p->state = GHOST;
         return;
       }
       
       // If ref_count is 0, free all other threads in the group
         struct proc *q = p->group_next;
         struct proc *next;
+        printf("freeproc: freeing group\n");
         
         // Free all non-leader threads in the group
         while(q != p) {
@@ -215,56 +218,57 @@ freeproc(struct proc *p)
           q->state = UNUSED;
           release(&q->lock);
           
+          printf("MADE IT HERE\n");
           q = next;
         }
       
       
       // Now free the leader's resources (self)
-      if(p->trapframe) {
-        kfree((void*)p->trapframe);
-        p->trapframe = 0;
-      }
+      // if(p->trapframe) {
+      //   kfree((void*)p->trapframe);
+      //   p->trapframe = 0;
+      // }
       
-      if(p->pagetable) {
-        proc_freepagetable(p->pagetable, p->sz); // Only the leader should free the physical page 
-        p->pagetable = 0;
-        p->sz = 0;
-        p->group_leader = 0;
-        p->group_next = 0;
-        p->group_prev = 0;
-        p->is_thread = 0;
-        p->tid = 0;
-      }
+      // if(p->pagetable) {
+      //   proc_freepagetable(p->pagetable, p->sz); // Only the leader should free the physical page 
+      //   p->pagetable = 0;
+      //   p->sz = 0;
+      //   p->group_leader = 0;
+      //   p->group_next = 0;
+      //   p->group_prev = 0;
+      //   p->is_thread = 0;
+      //   p->tid = 0;
+      // }
       
-      p->state = UNUSED;
+      // p->state = UNUSED;
       return;
-    } else {
-      //if full process, full tear-down
-        if(p->trapframe) {
-          kfree((void*)p->trapframe);
-          p->trapframe = 0;
-        }
-        if(p->pagetable) {
-          proc_freepagetable(p->pagetable, p->sz);
-          p->pagetable = 0;
-          p->sz = 0;
-        }
+    // } else {
+    //   //if full process, full tear-down
+    //     if(p->trapframe) {
+    //       kfree((void*)p->trapframe);
+    //       p->trapframe = 0;
+    //     }
+    //     if(p->pagetable) {
+    //       proc_freepagetable(p->pagetable, p->sz);
+    //       p->pagetable = 0;
+    //       p->sz = 0;
+    //     }
         
-        // Always clean up these fields, even if pagetable is NULL
-        // pagetable error or never had one 
-        p->pid = 0;
-        p->parent = 0;
-        p->name[0] = 0;
-        p->chan = 0;
-        p->killed = 0;
-        p->xstate = 0;
-        p->group_leader = 0;
-        p->group_next = 0;
-        p->group_prev = 0;
-        p->is_thread = 0;
-        p->tid = 0;
-        p->state = UNUSED;
-    }
+    //     // Always clean up these fields, even if pagetable is NULL
+    //     // pagetable error or never had one 
+    //     p->pid = 0;
+    //     p->parent = 0;
+    //     p->name[0] = 0;
+    //     p->chan = 0;
+    //     p->killed = 0;
+    //     p->xstate = 0;
+    //     p->group_leader = 0;
+    //     p->group_next = 0;
+    //     p->group_prev = 0;
+    //     p->is_thread = 0;
+    //     p->tid = 0;
+    //     p->state = UNUSED;
+    // }
   
 }
 
@@ -469,49 +473,62 @@ thread_exit(void)
     
     // Get the thread group leader
     struct proc *leader = p->group_leader ? p->group_leader : p;
+    if (p != leader) {
+             acquire(&leader->lock);
+    }
+
+    // Update reference count
+    if (leader->ref_count > 0) {
+        leader->ref_count--;
+    }
+
+    // Release leader's lock if acquired
+    if (p != leader) {
+        release(&leader->lock);
+    }
     
     // Update thread group linked list
-    if (p->group_next != p) {
-        // Get the leader's lock if this is not the leader
-        if (p != leader) {
-            acquire(&leader->lock);
-        }
+    // if (p->group_next != p) {
+    //     // Get the leader's lock if this is not the leader
+    //     if (p != leader) {
+    //         acquire(&leader->lock);
+    //     }
         
-        // Remove this thread from the circular list
-        p->group_prev->group_next = p->group_next;
-        p->group_next->group_prev = p->group_prev;
+    //     // Remove this thread from the circular list
+    //     p->group_prev->group_next = p->group_next;
+    //     p->group_next->group_prev = p->group_prev;
         
-        // Update reference count
-        if (leader->ref_count > 0) {
-            leader->ref_count--;
-        }
+    //     // Update reference count
+    //     if (leader->ref_count > 0) {
+    //         leader->ref_count--;
+    //     }
         
-        // If this is the leader but not the last thread, promote a new leader
-        if (p == leader && leader->ref_count > 0 && p->group_next) {
-            struct proc *new_leader = p->group_next;
-            acquire(&new_leader->lock);
+    //     // If this is the leader but not the last thread, promote a new leader
+    //     if (p == leader && leader->ref_count > 0 && p->group_next) {
+    //         struct proc *new_leader = p->group_next;
+    //         acquire(&new_leader->lock);
             
-            // Update all threads to point to the new leader
-            struct proc *t = new_leader;
-            do {
-                if (t != new_leader) {
-                    acquire(&t->lock);
-                }
-                t->group_leader = new_leader;
-                if (t != new_leader) {
-                    release(&t->lock);
-                }
-                t = t->group_next;
-            } while (t != new_leader);
+    //         // Update all threads to point to the new leader
+    //         struct proc *t = new_leader;
+    //         do {
+    //             if (t != new_leader) {
+    //                 acquire(&t->lock);
+    //             }
+    //             t->group_leader = new_leader;
+    //             if (t != new_leader) {
+    //                 release(&t->lock);
+    //             }
+    //             t = t->group_next;
+    //         } while (t != new_leader);
             
-            release(&new_leader->lock);
-        }
+    //         release(&new_leader->lock);
+    //     }
         
-        // Release leader's lock if acquired
-        if (p != leader) {
-            release(&leader->lock);
-        }
-    }
+    //     // Release leader's lock if acquired
+    //     if (p != leader) {
+    //         release(&leader->lock);
+    //     }
+    // }
     
     // Mark as zombie and set exit status
     p->xstate = 0;  // Exit status 0 for normal thread exit
@@ -542,7 +559,7 @@ exit(int status)
         // For threads, use thread_exit
         //printf("thread exit\n");
         thread_exit();
-        return; // Never reached
+        return; 
     }
     
     acquire(&p->lock);
@@ -550,6 +567,12 @@ exit(int status)
     // This is a process, clean up all resources
     
     // Free open files
+
+    if(p->num_children > 0) {
+      printf("in family\n");
+      freeproc(p->group_leader);
+    }
+
     for (int fd = 0; fd < NOFILE; fd++) {
         if (p->ofile[fd]) {
             fileclose(p->ofile[fd]);
