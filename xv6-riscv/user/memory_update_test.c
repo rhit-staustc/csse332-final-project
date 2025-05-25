@@ -61,9 +61,7 @@ void *thread_t3(void *arg) {
     return 0;
 }
 
-
-int main(int argc, char *argv[]) {
-
+void main_memory_update_test_impl(void) {
     knife_thread_t tid1, tid2, tid3;
     printf("=== MEMORY UPDATE TEST ===\n");
 

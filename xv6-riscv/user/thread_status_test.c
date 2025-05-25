@@ -63,7 +63,7 @@ void print_all_statuses(int tid_s, int tid_c, int tid_e) {
            tid_e, get_status_string_local(stat_e));
 }
 
-int main(int argc, char *argv[]) {
+void main_thread_status_test_impl(void) {
     int tid_sleep, tid_compute, tid_exit_early;
     int family_tids[MAX_FAMILY_MEMBERS];
     int num_family_members;

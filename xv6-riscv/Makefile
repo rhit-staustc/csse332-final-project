@@ -90,6 +90,15 @@ tags: $(OBJS) _init
 
 ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o $U/knife_threads.o
 
+# Add a variable for mega_test object files
+MEGA_TEST_OBJS = \
+	$U/mega_test.o \
+	$U/thread_createtest.o \
+	$U/combined_test.o \
+	$U/group_test.o \
+	$U/thread_status_test.o \
+	$U/memory_update_test.o
+
 _%: %.o $(ULIB)
 	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $^
 	$(OBJDUMP) -S $@ > $*.asm
@@ -106,6 +115,12 @@ $U/_forktest: $U/forktest.o $(ULIB)
 	# in order to be able to max out the proc table.
 	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_forktest $U/forktest.o $U/ulib.o $U/usys.o
 	$(OBJDUMP) -S $U/_forktest > $U/forktest.asm
+
+# Add a specific rule for mega_test
+$U/_mega_test: $(MEGA_TEST_OBJS) $(ULIB)
+	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $(MEGA_TEST_OBJS) $(ULIB)
+	$(OBJDUMP) -S $@ > $U/mega_test.asm
+	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $U/mega_test.sym
 
 mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 	gcc -Werror -Wall -I. -o mkfs/mkfs mkfs/mkfs.c
@@ -135,12 +150,7 @@ UPROGS=\
 	$U/_debug\
 	$U/_zombie\
 	$U/_xv6test\
-	$U/_thread_createtest\
-	$U/_thread_joinmemtest\
-	$U/_combined_test\
-	$U/_group_test\
-	$U/_thread_status_test\
-	$U/_memory_update_test\
+	$U/_mega_test\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
